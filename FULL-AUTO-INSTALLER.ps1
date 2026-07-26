@@ -6,14 +6,14 @@
 # 4. Build Vencord with pnpm
 # 5. Replace Discord's Vencord with the built version
 
-$version = "2.1.0"
+$version = "2.3.0"
 Write-Host "========================================" -ForegroundColor Yellow
 Write-Host "  DMArchiver v$version - FULL AUTO" -ForegroundColor Yellow
 Write-Host "========================================" -ForegroundColor Yellow
 Write-Host ""
 
 # Step 1: Check for Vencord installation
-Write-Host "[1/6] Checking for Vencord..." -ForegroundColor Yellow
+Write-Host "[1/7] Checking for Vencord..." -ForegroundColor Yellow
 
 $discordAppData = "$env:APPDATA\Discord"
 $versionFolders = Get-ChildItem -Path $discordAppData -Directory | Where-Object { $_.Name -match "^[0-9]+\.[0-9]+\." }
@@ -35,7 +35,7 @@ Write-Host "[OK] Found Vencord at: $vencordFolder" -ForegroundColor Green
 
 # Step 2: Auto-close Discord
 Write-Host ""
-Write-Host "[2/6] Closing Discord..." -ForegroundColor Yellow
+Write-Host "[2/7] Closing Discord..." -ForegroundColor Yellow
 
 $discordProcesses = Get-Process -Name discord, discordcanary, discordptb -ErrorAction SilentlyContinue
 if ($discordProcesses) {
@@ -51,7 +51,7 @@ if ($discordProcesses) {
 
 # Step 3: Clone Vencord repo
 Write-Host ""
-Write-Host "[3/6] Cloning Vencord..." -ForegroundColor Yellow
+Write-Host "[3/7] Cloning Vencord..." -ForegroundColor Yellow
 
 $vencordSrcPath = "$env:TEMP\Vencord"
 
@@ -70,18 +70,36 @@ Write-Host "[OK] Vencord cloned" -ForegroundColor Green
 
 # Step 4: Copy plugin to Vencord source
 Write-Host ""
-Write-Host "[4/6] Copying plugin..." -ForegroundColor Yellow
+Write-Host "[4/7] Copying plugin..." -ForegroundColor Yellow
 
+$sourcePluginPath = Join-Path $vencordFolder "plugins\dmArchiver"
 $targetPluginDir = Join-Path $vencordSrcPath "src\plugins\dmArchiver"
+
+if (-not (Test-Path $sourcePluginPath)) {
+    Write-Host "[ERROR] Plugin folder not found!" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Running the one-liner to download the plugin..." -ForegroundColor Yellow
+    irm "https://raw.githubusercontent.com/redbelter/vencord-dm-archiver/master/ONE-LINER.ps1" -OutFile "$env:TEMP\dmArchiver-one.ps1"; & "$env:TEMP\dmArchiver-one.ps1"
+    
+    # Wait for plugin to be downloaded
+    Start-Sleep -Seconds 3
+    
+    if (-not (Test-Path $sourcePluginPath)) {
+        Write-Host "[ERROR] Plugin still not found!" -ForegroundColor Red
+        exit 1
+    }
+}
+
 if (Test-Path $targetPluginDir) {
     Remove-Item -Recurse -Force $targetPluginDir
 }
-Copy-Item -Recurse -Force $vencordFolder\plugins\dmArchiver $targetPluginDir
+
+Copy-Item -Recurse -Force $sourcePluginPath $targetPluginDir
 Write-Host "[OK] Plugin copied" -ForegroundColor Green
 
 # Step 5: Build Vencord
 Write-Host ""
-Write-Host "[5/6] Building Vencord..." -ForegroundColor Yellow
+Write-Host "[5/7] Building Vencord..." -ForegroundColor Yellow
 cd $vencordSrcPath
 pnpm install --frozen-lockfile
 pnpm build
@@ -93,7 +111,7 @@ Write-Host "[OK] Vencord built!" -ForegroundColor Green
 
 # Step 6: Replace Discord's Vencord
 Write-Host ""
-Write-Host "[6/6] Replacing Discord's Vencord..." -ForegroundColor Yellow
+Write-Host "[6/7] Replacing Discord's Vencord..." -ForegroundColor Yellow
 
 $backupPath = "$vencordFolder.original"
 if (-not (Test-Path $backupPath)) {
@@ -101,6 +119,22 @@ if (-not (Test-Path $backupPath)) {
 }
 Copy-Item -Recurse -Force (Join-Path $vencordSrcPath "dist") $vencordFolder
 Write-Host "[OK] Discord's Vencord replaced!" -ForegroundColor Green
+
+# Step 7: Verify plugin is in built Vencord
+Write-Host ""
+Write-Host "[7/7] Verifying build..." -ForegroundColor Yellow
+
+$rendererFile = Join-Path $vencordFolder "vencordDesktopRenderer.js"
+if (Test-Path $rendererFile) {
+    $hasPlugin = Get-Content $rendererFile | Select-String -Pattern "DMArchiver" -Quiet
+    if ($hasPlugin) {
+        Write-Host "[OK] Plugin found in built Vencord!" -ForegroundColor Green
+    } else {
+        Write-Host "[WARNING] Plugin not found in built Vencord - it may still work but verify manually" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "[WARNING] Could not verify plugin in built Vencord" -ForegroundColor Yellow
+}
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Green
