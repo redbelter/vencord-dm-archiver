@@ -1,6 +1,5 @@
 # DMArchiver One-Liner Installer (PowerShell)
 
-```powershell
 # Detect Discord version
 $username = $env:USERNAME
 $appSettings = "C:\Users\$username\AppData\Roaming\Discord\app-settings.json"
@@ -27,11 +26,10 @@ if (-not (Test-Path $pluginDir)) {
 Write-Host "Discord Version: $discordVersion" -ForegroundColor Green
 Write-Host "Plugin Directory: $pluginDir" -ForegroundColor Green
 
-# Download plugin files
-$baseUrl = "https://raw.githubusercontent.com/redbelter/vencord-dm-archiver/master/src/plugins/dmArchiver"
+# Download plugin files (from repo root)
+$baseUrl = "https://raw.githubusercontent.com/redbelter/vencord-dm-archiver/master"
 irm "$baseUrl/index.ts" -OutFile (Join-Path $pluginDir "index.ts")
 irm "$baseUrl/README.md" -OutFile (Join-Path $pluginDir "README.md")
 
 Write-Host "Plugin installed successfully!" -ForegroundColor Green
 Write-Host "Reload Discord or Vencord plugins to use the commands" -ForegroundColor Cyan
-```
