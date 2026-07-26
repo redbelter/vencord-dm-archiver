@@ -166,6 +166,6 @@ jobs:
           }
           
           # Create release
-          gh release create $tag --title "DMArchiver v$version" --notes "Auto-generated release" --file "./dmArchiver-installer.zip"
+          gh release create $tag --title "DMArchiver v$version" --notes "Auto-generated release" ./dmArchiver-installer.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
