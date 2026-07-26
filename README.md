@@ -31,16 +31,17 @@ Export and preserve Discord DM content: media, images, and text history. Include
 
 ### One-Line Installer (PowerShell)
 
+Run this in PowerShell:
+
 ```powershell
- irm "https://raw.githubusercontent.com/redbelter/vencord-dm-archiver/master/src/plugins/dmArchiver/install.ps1" -OutFile "$env:TEMP\dmArchiver-installer.ps1"; & "$env:TEMP\dmArchiver-installer.ps1"
+$username=$env:USERNAME;$appSettings="C:\Users\$username\AppData\Roaming\Discord\app-settings.json";$dcVer="0.0.XXX";if(Test-Path $appSettings){try{$dcVer=(gc $appSettings -Raw|ConvertFrom-Json).version}catch{}};$pluginDir="C:\Users\$username\AppData\Roaming\Discord\$dcVer\modules\vencord\plugins\dmArchiver";if(-not(Test-Path $pluginDir)){ni -ItemType Directory -Path $pluginDir -Force|Out-Null};irm "https://raw.githubusercontent.com/redbelter/vencord-dm-archiver/master/src/plugins/dmArchiver/index.ts" -OutFile (Join-Path $pluginDir "index.ts");irm "https://raw.githubusercontent.com/redbelter/vencord-dm-archiver/master/src/plugins/dmArchiver/README.md" -OutFile (Join-Path $pluginDir "README.md");Write-Host "Plugin installed! Reload Discord or Vencord plugins." -ForegroundColor Green
 ```
 
 This will:
-- Download the installer from GitHub
-- Run it automatically from your temp folder
 - Detect your Discord version
-- Copy files to the correct folder
-- Prompt you to close Discord if needed
+- Create the plugin folder if needed
+- Download the plugin files
+- Confirm installation
 
 ## Usage
 
