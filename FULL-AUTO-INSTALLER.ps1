@@ -6,14 +6,14 @@
 # 4. Build Vencord with pnpm
 # 5. Replace Discord's Vencord with the built version
 
-$version = "2.6.0"
+$version = "2.9.0"
 Write-Host "========================================" -ForegroundColor Yellow
 Write-Host "  DMArchiver v$version - FULL AUTO" -ForegroundColor Yellow
 Write-Host "========================================" -ForegroundColor Yellow
 Write-Host ""
 
 # Step 1: Check for Vencord installation
-Write-Host "[1/8] Checking for Vencord..." -ForegroundColor Yellow
+Write-Host "[1/9] Checking for Vencord..." -ForegroundColor Yellow
 
 $discordAppData = "$env:APPDATA\Discord"
 $versionFolders = Get-ChildItem -Path $discordAppData -Directory | Where-Object { $_.Name -match "^[0-9]+\.[0-9]+\." }
@@ -35,7 +35,7 @@ Write-Host "[OK] Found Vencord at: $vencordFolder" -ForegroundColor Green
 
 # Step 2: Auto-close Discord
 Write-Host ""
-Write-Host "[2/8] Closing Discord..." -ForegroundColor Yellow
+Write-Host "[2/9] Closing Discord..." -ForegroundColor Yellow
 
 $discordProcesses = Get-Process -Name discord, discordcanary, discordptb -ErrorAction SilentlyContinue
 if ($discordProcesses) {
@@ -51,7 +51,7 @@ if ($discordProcesses) {
 
 # Step 3: Clone Vencord repo
 Write-Host ""
-Write-Host "[3/8] Cloning Vencord..." -ForegroundColor Yellow
+Write-Host "[3/9] Cloning Vencord..." -ForegroundColor Yellow
 
 $vencordSrcPath = "$env:TEMP\Vencord"
 
@@ -70,9 +70,9 @@ Write-Host "[OK] Vencord cloned" -ForegroundColor Green
 
 # Step 4: Copy plugin to Vencord source
 Write-Host ""
-Write-Host "[4/8] Copying plugin..." -ForegroundColor Yellow
+Write-Host "[4/9] Copying plugin..." -ForegroundColor Yellow
 
-$sourcePluginPath = Join-Path $vencordFolder "src\\plugins\\dmArchiver"
+$sourcePluginPath = Join-Path $vencordFolder "src\plugins\dmArchiver"
 $targetPluginDir = Join-Path $vencordSrcPath "src\plugins\dmArchiver"
 
 if (-not (Test-Path $sourcePluginPath)) {
@@ -99,7 +99,7 @@ Write-Host "[OK] Plugin copied" -ForegroundColor Green
 
 # Step 5: Build Vencord
 Write-Host ""
-Write-Host "[5/8] Building Vencord..." -ForegroundColor Yellow
+Write-Host "[5/9] Building Vencord..." -ForegroundColor Yellow
 cd $vencordSrcPath
 pnpm install --frozen-lockfile
 pnpm build
@@ -111,7 +111,7 @@ Write-Host "[OK] Vencord built!" -ForegroundColor Green
 
 # Step 6: Replace Discord's Vencord (with src/plugins and dist)
 Write-Host ""
-Write-Host "[6/8] Replacing Discord's Vencord..." -ForegroundColor Yellow
+Write-Host "[6/9] Replacing Discord's Vencord..." -ForegroundColor Yellow
 
 $backupPath = "$vencordFolder.original"
 if (-not (Test-Path $backupPath)) {
@@ -127,13 +127,13 @@ Write-Host "[OK] Discord's Vencord replaced!" -ForegroundColor Green
 
 # Step 7: Wait for file system to sync
 Write-Host ""
-Write-Host "[7/8] Waiting for file sync..." -ForegroundColor Yellow
+Write-Host "[7/9] Waiting for file sync..." -ForegroundColor Yellow
 Start-Sleep -Seconds 3
 Write-Host "[OK] Files synced" -ForegroundColor Green
 
 # Step 8: Verify plugin is in built Vencord
 Write-Host ""
-Write-Host "[8/8] Verifying build..." -ForegroundColor Yellow
+Write-Host "[8/9] Verifying build..." -ForegroundColor Yellow
 
 $rendererFile = Join-Path $vencordFolder "vencordDesktopRenderer.js"
 if (Test-Path $rendererFile) {
@@ -141,7 +141,7 @@ if (Test-Path $rendererFile) {
     if ($hasPlugin) {
         Write-Host "[OK] Plugin found in built Vencord!" -ForegroundColor Green
     } else {
-        Write-Host "[WARNING] Plugin not found in built Vencord - it may still work but verify manually" -ForegroundColor Yellow
+        Write-Host "[WARNING] Plugin not found in built Vencord" -ForegroundColor Yellow
     }
 } else {
     Write-Host "[WARNING] Could not verify plugin in built Vencord" -ForegroundColor Yellow
@@ -154,6 +154,9 @@ Write-Host "========================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "Check Settings > Vencord > Plugins for DMArchiver" -ForegroundColor White
 Write-Host ""
+
+# Step 9: Open Discord
+Write-Host ""
 Read-Host "Press Enter to open Discord..."
 $discordPath = "$env:LOCALAPPDATA\Discord\app-1.0.9249\Discord.exe"
 if (Test-Path $discordPath) {
@@ -162,7 +165,25 @@ if (Test-Path $discordPath) {
     Start-Process "explorer.exe" "shell:appsFolder\4693710e-302d-4bec-8bcd-c6e1699a4326!Discord"
 }
 
-# Copy plugin source to Discord's vencord for runtime loading (if supported)
+# Step 10: Wait for Discord to start and check logs
+Write-Host ""
+Write-Host "Checking Discord logs for plugin..." -ForegroundColor Yellow
+Start-Sleep -Seconds 10
+
+$logPath = "$env:APPDATA\Discord\logs\renderer_js.log"
+if (Test-Path $logPath) {
+    $pluginLines = Get-Content $logPath | Select-String "Starting plugin DMArchiver"
+    if ($pluginLines) {
+        Write-Host "[OK] Plugin found in Discord logs!" -ForegroundColor Green
+        Write-Host "  Plugin loaded successfully!" -ForegroundColor Green
+    } else {
+        Write-Host "[INFO] Plugin not found in logs yet" -ForegroundColor Yellow
+        Write-Host "  Check Settings > Vencord > Plugins to see if it's listed" -ForegroundColor Cyan
+    }
+} else {
+    Write-Host "[INFO] Could not find Discord logs" -ForegroundColor Yellow
+}
+
 Write-Host ""
 Write-Host "Note: Plugin files copied to Discord's Vencord src/plugins folder" -ForegroundColor Cyan
-Write-Host "If Vencord doesn't load the plugin, check Settings > Vencord > Plugins" -ForegroundColor Yellow
+Write-Host "If the plugin doesn't appear, check Settings > Vencord > Plugins manually" -ForegroundColor Yellow
