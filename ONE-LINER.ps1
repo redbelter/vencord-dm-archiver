@@ -1,5 +1,9 @@
 # DMArchiver One-Liner Installer (PowerShell)
 
+$version = "1.1.0"
+Write-Host "DMArchiver Installer v$version" -ForegroundColor Yellow
+Write-Host ""
+
 # Find Discord version folder and check for Vencord
 $discordAppData = "$env:APPDATA\Discord"
 
