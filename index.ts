@@ -841,6 +841,7 @@ export default definePlugin({
     authors: [Devs.redbelter],
 
     settings,
+    required: true,
 
     start() {
         applyQuestHiding(settings.store.hideQuestStuff);
