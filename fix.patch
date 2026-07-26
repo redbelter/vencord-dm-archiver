@@ -1,0 +1,13 @@
+--- FULL-AUTO-INSTALLER.ps1.orig
++++ FULL-AUTO-INSTALLER.ps1
+@@ -72,8 +72,8 @@
+ Write-Host ""
+ Write-Host "[4/9] Copying plugin..." -ForegroundColor Yellow
+ 
+-$sourcePluginPath = Join-Path $vencordFolder "src\plugins\dmArchiver"
+-$targetPluginDir = Join-Path $vencordSrcPath "src\plugins\dmArchiver"
++$sourcePluginPath = Join-Path $vencordFolder "plugins\dmArchiver"
++$targetPluginDir = Join-Path $vencordSrcPath "src\plugins\dmArchiver"
+ 
+ if (-not (Test-Path $sourcePluginPath)) {
+     Write-Host "[ERROR] Plugin folder not found!" -ForegroundColor Red
