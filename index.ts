@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { ApplicationCommandOptionType, findOption } from "@api/Commands";
+import { ApplicationCommandOptionType, findOption, registerCommand } from "@api/Commands";
 import { definePluginSettings } from "@api/Settings";
 import { Devs } from "@utils/constants";
 import definePlugin, { OptionType } from "@utils/types";
@@ -835,101 +835,6 @@ function canShowDeleteCommands(): boolean {
     return settings.store.showDeleteOption;
 }
 
-const DELETE_COMMANDS = [
-    {
-        name: "delete-dm-messages",
-        description: "Delete your own messages from a DM conversation (own messages only)",
-        options: [
-            {
-                name: "userId",
-                description: "User ID whose DMs to delete. Leave blank for current channel.",
-                type: ApplicationCommandOptionType.STRING,
-                required: false
-            }
-        ],
-        execute: async (args: any, ctx: any) => {
-            if (!canShowDeleteCommands()) {
-                return { content: "❌ Delete commands are disabled. Enable 'showDeleteOption' in settings." };
-            }
-
-            const targetUserId = findOption(args, "userId", null);
-            const channelId = ctx.channel.id;
-
-            if (!targetUserId) {
-                return { content: "❌ User ID is required" };
-            }
-
-            try {
-                showToast(`DMArchiver: deleting messages for user ${targetUserId}...`, Toasts.Type.MESSAGE);
-
-                const response = await RestAPI.get({
-                    url: `/channels/${channelId}/messages`,
-                    query: { limit: "100" }
-                });
-
-                const messages = response.body as any[];
-                const ownMessages = messages.filter(msg => msg.author?.id === UserStore.getCurrentUser()?.id);
-
-                if (!ownMessages.length) {
-                    return { content: `ℹ️ No messages found for user ${targetUserId}` };
-                }
-
-                showToast(`DMArchiver: deleting ${ownMessages.length} own messages...`, Toasts.Type.MESSAGE);
-
-                const batchSize = 20;
-                let deletedCount = 0;
-                const delayMs = 1500;
-
-                for (let i = 0; i < ownMessages.length; i += batchSize) {
-                    if (i > 0) await new Promise(r => setTimeout(r, delayMs));
-
-                    const batch = ownMessages.slice(i, i + batchSize);
-                    await Promise.all(batch.map(msg =>
-                        RestAPI.del({ url: `/channels/${channelId}/messages/${msg.id}` })
-                            .then(res => {
-                                if (res.ok || res.status === 204) deletedCount++;
-                            })
-                            .catch(() => {})
-                    ));
-                }
-
-                const msg = `✅ Deleted ${deletedCount} own messages for user ${targetUserId}`;
-                showToast(msg, Toasts.Type.SUCCESS);
-                return { content: msg };
-
-            } catch (error) {
-                const errorMsg = String(error);
-                showToast(`DMArchiver error: ${errorMsg}`, Toasts.Type.FAILURE);
-                return { content: `❌ Delete failed: ${errorMsg}` };
-            }
-        }
-    },
-    {
-        name: "delete-all-my-messages",
-        description: "Delete all your own messages in current DM (batched, rate-limited)",
-        execute: async (_args: any, ctx: any) => {
-            if (!canShowDeleteCommands()) {
-                return { content: "❌ Delete commands are disabled. Enable 'showDeleteOption' in settings." };
-            }
-
-            const channelId = ctx.channel.id;
-            showToast(`DMArchiver: scanning for own messages in this DM...`, Toasts.Type.MESSAGE);
-
-            try {
-                const { deleted, failed } = await deleteUserMessages(channelId);
-                const total = deleted + failed;
-                const msg = `✅ Deleted ${deleted}/${total} messages (${failed} failed)`;
-                showToast(msg, Toasts.Type.SUCCESS);
-                return { content: msg };
-            } catch (error) {
-                const errorMsg = String(error);
-                showToast(`DMArchiver error: ${errorMsg}`, Toasts.Type.FAILURE);
-                return { content: `❌ Delete failed: ${errorMsg}` };
-            }
-        }
-    }
-];
-
 export default definePlugin({
     name: "DMArchiver",
     description: "Export and preserve DM content: media, images, and text history. Includes optional message deletion with user consent.",
@@ -940,7 +845,11 @@ export default definePlugin({
     start() {
         applyQuestHiding(settings.store.hideQuestStuff);
         console.log("DMArchiver started - use /export-dm-media or /list-dm-users to begin.");
-        showToast("DMArchiver loaded: /export-dm-media, /delete-dm-messages available", Toasts.Type.MESSAGE);
+        showToast("DMArchiver loaded: /export-dm-media available", Toasts.Type.MESSAGE);
+
+        if (settings.store.showDeleteOption) {
+            showToast("DMArchiver: delete commands ENABLED (use with caution)", Toasts.Type.MESSAGE);
+        }
     },
 
     stop() {
@@ -1127,6 +1036,99 @@ export default definePlugin({
                 showToast(`DMArchiver: delete commands ${status}`, Toasts.Type.MESSAGE);
                 return { content: `✅ Delete commands ${status}` };
             }
+        },
+        {
+            name: "delete-dm-messages",
+            description: "Delete your own messages from a DM conversation (own messages only, user-initiated)",
+            options: [
+                {
+                    name: "userId",
+                    description: "User ID whose DMs to delete. Leave blank for current channel.",
+                    type: ApplicationCommandOptionType.STRING,
+                    required: false
+                }
+            ],
+            execute: async (args: any) => {
+                if (!settings.store.showDeleteOption) {
+                    return { content: "❌ Delete commands are disabled. Enable 'showDeleteOption' in settings." };
+                }
+
+                const targetUserId = findOption(args, "userId", null);
+                const ctx = (window as any).Discord?.getSelectedChannel();
+
+                if (!targetUserId) {
+                    return { content: "❌ User ID is required" };
+                }
+
+                try {
+                    showToast(`DMArchiver: deleting messages for user ${targetUserId}...`, Toasts.Type.MESSAGE);
+
+                    // Fetch messages from current channel
+                    const response = await RestAPI.get({
+                        url: `/channels/${ctx.channel.id}/messages`,
+                        query: { limit: "100" }
+                    });
+
+                    const messages = response.body as any[];
+                    const ownMessages = messages.filter(msg => msg.author?.id === UserStore.getCurrentUser()?.id);
+
+                    if (!ownMessages.length) {
+                        return { content: `ℹ️ No messages found for user ${targetUserId}` };
+                    }
+
+                    showToast(`DMArchiver: deleting ${ownMessages.length} own messages...`, Toasts.Type.MESSAGE);
+
+                    const batchSize = 20;
+                    let deletedCount = 0;
+                    const delayMs = 1500;
+
+                    for (let i = 0; i < ownMessages.length; i += batchSize) {
+                        if (i > 0) await new Promise(r => setTimeout(r, delayMs));
+
+                        const batch = ownMessages.slice(i, i + batchSize);
+                        await Promise.all(batch.map(msg =>
+                            RestAPI.del({ url: `/channels/${ctx.channel.id}/messages/${msg.id}` })
+                                .then(res => {
+                                    if (res.ok || res.status === 204) deletedCount++;
+                                })
+                                .catch(() => {})
+                        ));
+                    }
+
+                    const msg = `✅ Deleted ${deletedCount} own messages for user ${targetUserId}`;
+                    showToast(msg, Toasts.Type.SUCCESS);
+                    return { content: msg };
+
+                } catch (error) {
+                    const errorMsg = String(error);
+                    showToast(`DMArchiver error: ${errorMsg}`, Toasts.Type.FAILURE);
+                    return { content: `❌ Delete failed: ${errorMsg}` };
+                }
+            }
+        },
+        {
+            name: "delete-all-my-messages",
+            description: "Delete all your own messages in current DM (batched, rate-limited)",
+            execute: async (_args: any) => {
+                if (!settings.store.showDeleteOption) {
+                    return { content: "❌ Delete commands are disabled. Enable 'showDeleteOption' in settings." };
+                }
+
+                const ctx = (window as any).Discord?.getSelectedChannel();
+                showToast(`DMArchiver: scanning for own messages in this DM...`, Toasts.Type.MESSAGE);
+
+                try {
+                    const { deleted, failed } = await deleteUserMessages(ctx.channel.id);
+                    const total = deleted + failed;
+                    const msg = `✅ Deleted ${deleted}/${total} messages (${failed} failed)`;
+                    showToast(msg, Toasts.Type.SUCCESS);
+                    return { content: msg };
+                } catch (error) {
+                    const errorMsg = String(error);
+                    showToast(`DMArchiver error: ${errorMsg}`, Toasts.Type.FAILURE);
+                    return { content: `❌ Delete failed: ${errorMsg}` };
+                }
+            }
         }
-    ].concat(canShowDeleteCommands() ? DELETE_COMMANDS : [])
+    ]
 });
