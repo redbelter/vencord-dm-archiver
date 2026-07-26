@@ -166,6 +166,7 @@ if (Test-Path $discordPath) {
 }
 
 # Step 10: Wait for Discord to start and check logs
+$scriptLogPath = "$env:TEMP\dmArchiver-install.log"
 Write-Host ""
 Write-Host "Checking Discord logs for plugin..." -ForegroundColor Yellow
 Start-Sleep -Seconds 10
@@ -176,14 +177,19 @@ if (Test-Path $logPath) {
     if ($pluginLines) {
         Write-Host "[OK] Plugin found in Discord logs!" -ForegroundColor Green
         Write-Host "  Plugin loaded successfully!" -ForegroundColor Green
+        $pluginLines | Out-File -FilePath $scriptLogPath -Append
     } else {
         Write-Host "[INFO] Plugin not found in logs yet" -ForegroundColor Yellow
         Write-Host "  Check Settings > Vencord > Plugins to see if it's listed" -ForegroundColor Cyan
+        "[INFO] Plugin not found in Discord logs at $(Get-Date)" | Out-File -FilePath $scriptLogPath -Append
     }
 } else {
     Write-Host "[INFO] Could not find Discord logs" -ForegroundColor Yellow
+    "[INFO] Could not find Discord logs at $(Get-Date)" | Out-File -FilePath $scriptLogPath -Append
 }
 
+Write-Host ""
+Write-Host "Log saved to: $scriptLogPath" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Note: Plugin files copied to Discord's Vencord src/plugins folder" -ForegroundColor Cyan
 Write-Host "If the plugin doesn't appear, check Settings > Vencord > Plugins manually" -ForegroundColor Yellow
