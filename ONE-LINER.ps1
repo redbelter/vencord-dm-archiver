@@ -3,28 +3,37 @@
 # Find Discord version folder and check for Vencord
 $discordAppData = "$env:APPDATA\Discord"
 
-# Get latest Discord version folder (matches versions like 0.0.XXX, 1.0.XXX, etc.)
+# Get all Discord version folders
 $versionFolders = Get-ChildItem -Path $discordAppData -Directory | Where-Object { $_.Name -match "^[0-9]+\.[0-9]+\.[0-9]+" }
-$versionFolder = $versionFolders | Sort-Object Name -Descending | Select-Object -First 1
 
-if (-not $versionFolder) {
-    Write-Host "Discord version folder not found!" -ForegroundColor Red
-    Write-Host "Looking for folders matching pattern: 0.0.XXX, 1.0.XXX, etc."
-    Write-Host "Available folders:"
-    Get-ChildItem -Path $discordAppData -Directory | ForEach-Object { Write-Host "  - $($_.Name)" }
-    Write-Host ""
+if (-not $versionFolders) {
+    Write-Host "No Discord version folders found!" -ForegroundColor Red
     Write-Host "Please make sure Discord is installed and run this script again."
     exit 1
 }
 
-$discordVersion = $versionFolder.Name
-$vencordFolder = "$discordAppData\$discordVersion\modules\vencord"
+# Find the latest version folder (highest version number)
+$versionFolder = $versionFolders | Sort-Object Name -Descending | Select-Object -First 1
+$latestVersion = $versionFolder.Name
 
-Write-Host "Discord Version: $discordVersion" -ForegroundColor Green
-Write-Host "Checking for Vencord at: $vencordFolder" -ForegroundColor Cyan
+Write-Host "Latest Discord version folder: $latestVersion" -ForegroundColor Cyan
+Write-Host ""
 
-if (-not (Test-Path $vencordFolder)) {
-    Write-Host "Vencord not found!" -ForegroundColor Red
+# Look for Vencord in ANY version folder (not just latest)
+$vencordFolder = $null
+$foundVersion = $null
+
+foreach ($folder in $versionFolders) {
+    $testPath = Join-Path $discordAppData (Join-Path $folder.Name "modules\vencord")
+    if (Test-Path $testPath) {
+        $vencordFolder = $testPath
+        $foundVersion = $folder.Name
+        break
+    }
+}
+
+if (-not $vencordFolder) {
+    Write-Host "Vencord not found in any Discord version folder!" -ForegroundColor Red
     Write-Host ""
     Write-Host "Please install Vencord first:" -ForegroundColor Yellow
     Write-Host ""
@@ -38,12 +47,13 @@ if (-not (Test-Path $vencordFolder)) {
     exit 1
 }
 
+Write-Host "Discord Version: $latestVersion" -ForegroundColor Green
 Write-Host "Vencord found at: $vencordFolder" -ForegroundColor Green
 
-# Create plugin folder
-$pluginDir = "$vencordFolder\plugins\dmArchiver"
+# Create plugin folder in the LATEST version (where Discord is actually running)
+$pluginDir = Join-Path $discordAppData (Join-Path $latestVersion "modules\vencord\plugins\dmArchiver")
 if (-not (Test-Path $pluginDir)) {
-    Write-Host "Creating plugin directory..." -ForegroundColor Yellow
+    Write-Host "Creating plugin directory in latest version folder..." -ForegroundColor Yellow
     New-Item -ItemType Directory -Path $pluginDir -Force | Out-Null
 }
 
