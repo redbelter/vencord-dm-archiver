@@ -54,10 +54,10 @@ if (-not $vencordFolder) {
 Write-Host "Discord Version: $latestVersion" -ForegroundColor Green
 Write-Host "Vencord found at: $vencordFolder" -ForegroundColor Green
 
-# Create plugin folder in the LATEST version (where Discord is actually running)
-$pluginDir = Join-Path $discordAppData (Join-Path $latestVersion "modules\vencord\plugins\dmArchiver")
+# Create plugin folder in Vencord's version folder (where plugins actually need to go)
+$pluginDir = "$vencordFolder\plugins\dmArchiver"
 if (-not (Test-Path $pluginDir)) {
-    Write-Host "Creating plugin directory in latest version folder..." -ForegroundColor Yellow
+    Write-Host "Creating plugin directory in Vencord version folder..." -ForegroundColor Yellow
     New-Item -ItemType Directory -Path $pluginDir -Force | Out-Null
 }
 
