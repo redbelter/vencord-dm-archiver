@@ -3,18 +3,25 @@
 # Find Discord version folder and check for Vencord
 $discordAppData = "$env:APPDATA\Discord"
 
-# Get latest Discord version folder
-$versionFolders = Get-ChildItem -Path $discordAppData -Directory | Where-Object { $_.Name -match "^0\." }
+# Get latest Discord version folder (matches versions like 0.0.XXX, 1.0.XXX, etc.)
+$versionFolders = Get-ChildItem -Path $discordAppData -Directory | Where-Object { $_.Name -match "^[0-9]+\.[0-9]+\.[0-9]+" }
 $versionFolder = $versionFolders | Sort-Object Name -Descending | Select-Object -First 1
 
 if (-not $versionFolder) {
     Write-Host "Discord version folder not found!" -ForegroundColor Red
+    Write-Host "Looking for folders matching pattern: 0.0.XXX, 1.0.XXX, etc."
+    Write-Host "Available folders:"
+    Get-ChildItem -Path $discordAppData -Directory | ForEach-Object { Write-Host "  - $($_.Name)" }
+    Write-Host ""
     Write-Host "Please make sure Discord is installed and run this script again."
     exit 1
 }
 
 $discordVersion = $versionFolder.Name
 $vencordFolder = "$discordAppData\$discordVersion\modules\vencord"
+
+Write-Host "Discord Version: $discordVersion" -ForegroundColor Green
+Write-Host "Checking for Vencord at: $vencordFolder" -ForegroundColor Cyan
 
 if (-not (Test-Path $vencordFolder)) {
     Write-Host "Vencord not found!" -ForegroundColor Red
@@ -31,7 +38,6 @@ if (-not (Test-Path $vencordFolder)) {
     exit 1
 }
 
-Write-Host "Discord Version: $discordVersion" -ForegroundColor Green
 Write-Host "Vencord found at: $vencordFolder" -ForegroundColor Green
 
 # Create plugin folder
@@ -53,14 +59,17 @@ if ($downloadError) {
     exit 1
 }
 
+Write-Host ""
 Write-Host "Plugin installed successfully!" -ForegroundColor Green
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Cyan
-Write-Host "1. Close Discord completely"
+Write-Host "1. Close Discord completely (Right-click taskbar icon > Quit)"
 Write-Host "2. Restart Discord"
 Write-Host "3. Or reload Vencord plugins: Settings > Vencord > Reload Plugins"
 Write-Host ""
-Write-Host "You can now use these commands:" -ForegroundColor Cyan
+Write-Host "You should now see 'DMArchiver' in the plugin list" -ForegroundColor Green
+Write-Host ""
+Write-Host "Commands available:" -ForegroundColor Cyan
 Write-Host "  /list-dm-users"
 Write-Host "  /export-dm-media"
 Write-Host "  /save-dm-text"
