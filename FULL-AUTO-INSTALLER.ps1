@@ -150,4 +150,4 @@ Write-Host ""
 Write-Host "Check Settings > Vencord > Plugins for DMArchiver" -ForegroundColor White
 Write-Host ""
 Read-Host "Press Enter to open Discord..."
-Start-Process "explorer.exe" "shell:appsFolder\4693710e-302d-4bec-8bcd-c6e1699a4326!Discord"
+Start-Process "Discord"
