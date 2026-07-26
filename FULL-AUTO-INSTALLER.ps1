@@ -6,28 +6,56 @@
 # 4. Build Vencord with pnpm
 # 5. Replace Discord's Vencord with the built version
 
-$version = "2.15.0"
+$version = "2.15.1"
 Write-Host "========================================" -ForegroundColor Yellow
 Write-Host "  DMArchiver v$version - FULL AUTO" -ForegroundColor Yellow
 Write-Host "========================================" -ForegroundColor Yellow
 Write-Host ""
 
-# Step 1: Check for Vencord installation
-Write-Host "[1/9] Checking for Vencord..." -ForegroundColor Yellow
-
+# Check if Discord is using app.asar (stable) - Vencord modules won't work
 $discordAppData = "$env:APPDATA\Discord"
 $versionFolders = Get-ChildItem -Path $discordAppData -Directory | Where-Object { $_.Name -match "^[0-9]+\.[0-9]+\." }
 
-if (-not $versionFolders) {
-    Write-Host "[ERROR] Discord not found!" -ForegroundColor Red
-    exit 1
+if ($versionFolders) {
+    $latestVersion = ($versionFolders | Sort-Object Name -Descending | Select-Object -First 1).Name
+    $discordExe = "$env:LOCALAPPDATA\Discord\app-$latestVersion\Discord.exe"
+    
+    if (Test-Path $discordExe) {
+        # Check if Discord is using asar (stable) or modules folder (canary/dev)
+        $asarPath = "$env:LOCALAPPDATA\Discord\app-$latestVersion\resources\app.asar"
+        if (Test-Path $asarPath) {
+            Write-Host "[WARNING] Discord uses app.asar - Vencord modules won't load!" -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host "Discord stable loads Vencord from app.asar, not modules/vencord/" -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host "To use Vencord with modules:" -ForegroundColor Cyan
+            Write-Host "1. Download Discord Canary or Dev from https://discord.com/download" -ForegroundColor White
+            Write-Host "2. Install Vencord to Discord Canary/Dev" -ForegroundColor White
+            Write-Host "3. Run this installer again" -ForegroundColor White
+            Write-Host ""
+            Write-Host "Or install Vencord to current Discord (will be overwritten on update)" -ForegroundColor Yellow
+            Write-Host ""
+            
+            $installAnyway = Read-Host "Install to stable Discord anyway? (Y/N)"
+            if ($installAnyway -ne "Y") {
+                Write-Host "[INFO] Installation cancelled" -ForegroundColor Yellow
+                exit 0
+            }
+        }
+    }
 }
 
+Write-Host ""
+
+# Find the latest version folder
 $latestVersion = ($versionFolders | Sort-Object Name -Descending | Select-Object -First 1).Name
 $vencordFolder = Join-Path $discordAppData (Join-Path $latestVersion "modules\vencord")
 
 if (-not (Test-Path $vencordFolder)) {
     Write-Host "[ERROR] Vencord not found!" -ForegroundColor Red
+    Write-Host "Vencord is installed at: $vencordFolder" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "Please install Vencord from: https://vencord.dev/download" -ForegroundColor Yellow
     exit 1
 }
 
@@ -72,7 +100,6 @@ Write-Host "[OK] Vencord cloned" -ForegroundColor Green
 Write-Host ""
 Write-Host "[4/9] Copying plugin from source repo..." -ForegroundColor Yellow
 
-# Use the plugin from the source repo (not Discord's outdated version)
 $sourcePluginPath = "C:\Users\red\Vencord\src\plugins\dmArchiver"
 $targetPluginDir = Join-Path $vencordSrcPath "src\plugins\dmArchiver"
 
@@ -144,8 +171,6 @@ Write-Host ""
 Write-Host "========================================" -ForegroundColor Green
 Write-Host "  DONE! Restart Discord" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
-Write-Host ""
-Write-Host "Check Settings > Vencord > Plugins for DMArchiver" -ForegroundColor White
 Write-Host ""
 
 # Step 9: Open Discord
