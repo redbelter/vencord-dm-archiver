@@ -72,7 +72,7 @@ Write-Host "[OK] Vencord cloned" -ForegroundColor Green
 Write-Host ""
 Write-Host "[4/8] Copying plugin..." -ForegroundColor Yellow
 
-$sourcePluginPath = Join-Path $vencordFolder "plugins\dmArchiver"
+$sourcePluginPath = Join-Path $vencordFolder "src\\plugins\\dmArchiver"
 $targetPluginDir = Join-Path $vencordSrcPath "src\plugins\dmArchiver"
 
 if (-not (Test-Path $sourcePluginPath)) {
