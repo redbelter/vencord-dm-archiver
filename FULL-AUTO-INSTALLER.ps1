@@ -6,7 +6,7 @@
 # 4. Build Vencord with pnpm
 # 5. Replace Discord's Vencord with the built version
 
-$version = "2.4.0"
+$version = "2.6.0"
 Write-Host "========================================" -ForegroundColor Yellow
 Write-Host "  DMArchiver v$version - FULL AUTO" -ForegroundColor Yellow
 Write-Host "========================================" -ForegroundColor Yellow
@@ -109,7 +109,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "[OK] Vencord built!" -ForegroundColor Green
 
-# Step 6: Replace Discord's Vencord
+# Step 6: Replace Discord's Vencord (with src/plugins and dist)
 Write-Host ""
 Write-Host "[6/8] Replacing Discord's Vencord..." -ForegroundColor Yellow
 
@@ -117,7 +117,12 @@ $backupPath = "$vencordFolder.original"
 if (-not (Test-Path $backupPath)) {
     Rename-Item $vencordFolder $backupPath
 }
+
+# Copy src/plugins (so Vencord can find plugins at runtime)
+Copy-Item -Recurse -Force (Join-Path $vencordSrcPath "src\plugins") (Join-Path $vencordFolder "src\plugins")
+# Copy dist (compiled files)
 Copy-Item -Recurse -Force (Join-Path $vencordSrcPath "dist") $vencordFolder
+
 Write-Host "[OK] Discord's Vencord replaced!" -ForegroundColor Green
 
 # Step 7: Wait for file system to sync
