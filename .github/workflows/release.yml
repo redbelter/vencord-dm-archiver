@@ -10,7 +10,6 @@ on:
 
 permissions:
   contents: write
-  packages: write
 
 jobs:
   release:
@@ -19,83 +18,71 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'pnpm'
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v3
         with:
           version: 10
 
-      - name: Install dependencies
-        run: pnpm install
-        working-directory: .
-
       - name: Build plugin
         run: |
           cd src/plugins/dmArchiver
-          # Create a minimal build - just copy the TypeScript file
-          # Vencord will compile it at runtime
+          # Vencord compiles .ts files at runtime, so we just need the source
           if (Test-Path "dist") { Remove-Item -Recurse -Force "dist" }
           New-Item -ItemType Directory -Path "dist" | Out-Null
           Copy-Item -Path "index.ts" -Destination "dist/index.js" -Force
-        working-directory: C:\Users\red\Vencord  # Note: This needs to be adjusted
+        working-directory: src
 
       - name: Package as ZIP
         run: |
           $version = if ($env:GITHUB_REF -match 'refs/tags/(.*)') { $matches[1] } else { "latest" }
           $archiveName = "dmArchiver-$version.zip"
-          Compress-Archive -Path "src/plugins/dmArchiver/*.ts" -DestinationPath $archiveName -Force
-          Write-Output "ArchiveName=$archiveName" >> $env:GITHUB_OUTPUT
-        working-directory: C:\Users\red\Vencord
+          Compress-Archive -Path "src/plugins/dmArchiver/index.ts", "src/plugins/dmArchiver/README.md" -DestinationPath $archiveName -Force
+          Write-Output "archive=$archiveName" >> $env:GITHUB_OUTPUT
+        working-directory: src
         id: package
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: |
-            C:\Users\red\Vencord\src\plugins\dmArchiver\index.ts
-            C:\Users\red\Vencord\src\plugins\dmArchiver\README.md
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          files: src/${{ steps.package.outputs.archive }}
+          generate_release_notes: true
 
-      - name: Generate Installer
-        run: |
-          $installer = Get-Content "src/plugins/dmArchiver/install.ps1" -Raw
-          $version = if ($env:GITHUB_REF -match 'refs/tags/(.*)') { $matches[1] } else { "latest" }
-          $installer = $installer -replace "REPO_URL_PLACEHOLDER", "https://github.com/redbelter/vencord-dm-archiver"
-          Set-Content -Path "dmArchiver-installer.ps1" -Value $installer -NoNewline
-        working-directory: C:\Users\red\Vencord
-
-      - name: Upload Installer
+      - name: Upload Installer Artifact
         uses: actions/upload-artifact@v4
         with:
           name: installer
-          path: C:\Users\red\Vencord\dmArchiver-installer.ps1
+          path: src/install.ps1
 
-  release-installer:
+      - name: Upload Plugin ZIP Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin
+          path: src/${{ steps.package.outputs.archive }}
+
+  release-with-installer:
     needs: release
     runs-on: windows-latest
     if: startsWith(github.ref, 'refs/tags/')
 
     steps:
-      - name: Download artifact
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: installer
-          path: ./installer
+          path: artifacts
 
-      - name: Create Release with Installer
+      - name: Create Release with All Assets
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            ./installer/dmArchiver-installer.ps1
+            artifacts/plugin/*.zip
+            artifacts/installer/install.ps1
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
