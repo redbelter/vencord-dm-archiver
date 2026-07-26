@@ -120,8 +120,10 @@ if (-not (Test-Path $backupPath)) {
 
 # Copy src/plugins (so Vencord can find plugins at runtime)
 Copy-Item -Recurse -Force (Join-Path $vencordSrcPath "src\plugins") (Join-Path $vencordFolder "src\plugins")
-# Copy dist (compiled files)
-Copy-Item -Recurse -Force (Join-Path $vencordSrcPath "dist" "*") $vencordFolder
+# Copy dist (compiled files) - copy individual files to root
+$distSrc = Join-Path $vencordSrcPath "dist"
+$distDest = $vencordFolder
+Get-ChildItem $distSrc -File | Copy-Item -Destination $distDest -Force
 
 Write-Host "[OK] Discord's Vencord replaced!" -ForegroundColor Green
 
