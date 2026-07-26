@@ -154,10 +154,18 @@ jobs:
           Compress-Archive -Path "./dmArchiver-installer.ps1" -DestinationPath "./dmArchiver-installer.zip" -Force
 
       - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
-        with:
-          files: "./dmArchiver-installer.zip"
-          generate_release_notes: true
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $tag = "v$version"
+          
+          # Create tag if it doesn't exist (for manual workflow_dispatch triggers)
+          if (-not (git tag -l | Select-String "^$tag$")) {
+              Write-Host "Creating tag $tag"
+              git tag $tag
+              git push origin $tag
+          }
+          
+          # Create release
+          gh release create $tag --title "DMArchiver v$version" --notes "Auto-generated release" --file "./dmArchiver-installer.zip"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
