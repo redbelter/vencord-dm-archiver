@@ -1,67 +1,106 @@
 # DMArchiver - Full Auto-Installer (PowerShell)
 # This script will:
-# 1. Run VencordInstaller.exe
+# 1. Clone Vencord repo
 # 2. Copy the dmArchiver plugin
-# 3. Restart Discord
+# 3. Build Vencord with pnpm
+# 4. Replace Discord's Vencord with the built version
 
-$version = "1.8.0"
+$version = "1.9.0"
 Write-Host "========================================" -ForegroundColor Yellow
 Write-Host "  DMArchiver v$version - FULL AUTO" -ForegroundColor Yellow
 Write-Host "========================================" -ForegroundColor Yellow
 Write-Host ""
 
-# Step 1: Run VencordInstaller
-Write-Host "[1/3] Installing Vencord..." -ForegroundColor Yellow
-
-$installerUrl = "https://github.com/Vencord/Installer/releases/latest/download/VencordInstaller.exe"
-$installerPath = "$env:TEMP\VencordInstaller.exe"
-
-irm $installerUrl -OutFile $installerPath
-Write-Host "  Running VencordInstaller.exe..." -ForegroundColor Yellow
-Write-Host "  Click 'Install' on your Discord when prompted" -ForegroundColor Cyan
-Start-Process $installerPath -Wait
-
-Write-Host ""
-Write-Host "[OK] Vencord installed!" -ForegroundColor Green
-
-# Step 2: Find Discord version and copy plugin
-Write-Host ""
-Write-Host "[2/3] Finding Discord version..." -ForegroundColor Yellow
+# Step 1: Check for Vencord installation
+Write-Host "[1/4] Checking for Vencord..." -ForegroundColor Yellow
 
 $discordAppData = "$env:APPDATA\Discord"
 $versionFolders = Get-ChildItem -Path $discordAppData -Directory | Where-Object { $_.Name -match "^[0-9]+\.[0-9]+\." }
 
 if (-not $versionFolders) {
     Write-Host "[ERROR] Discord not found!" -ForegroundColor Red
+    Write-Host "Install Discord from https://discord.com/download" -ForegroundColor Yellow
     exit 1
 }
 
 $latestVersion = ($versionFolders | Sort-Object Name -Descending | Select-Object -First 1).Name
 $vencordFolder = Join-Path $discordAppData (Join-Path $latestVersion "modules\vencord")
 
-Write-Host "[OK] Found Discord $latestVersion" -ForegroundColor Green
-
-# Step 3: Copy plugin
-Write-Host ""
-Write-Host "[3/3] Installing DMArchiver plugin..." -ForegroundColor Yellow
-
-$pluginSource = Join-Path $vencordFolder "plugins\dmArchiver"
-
-if (Test-Path $pluginSource) {
-    Write-Host "[OK] Plugin folder found!" -ForegroundColor Green
-} else {
-    Write-Host "[WARNING] Plugin not found" -ForegroundColor Yellow
-    Write-Host "  Running one-liner to download plugin..." -ForegroundColor Yellow
-    irm "https://raw.githubusercontent.com/redbelter/vencord-dm-archiver/master/ONE-LINER.ps1" -OutFile "$env:TEMP\dmArchiver.ps1"; & "$env:TEMP\dmArchiver.ps1"
-    Write-Host ""
-    Write-Host "Plugin downloaded. Running installer again..." -ForegroundColor Green
-    $pluginSource = Join-Path $vencordFolder "plugins\dmArchiver"
-    
-    if (-not (Test-Path $pluginSource)) {
-        Write-Host "[ERROR] Plugin still not found!" -ForegroundColor Red
-        exit 1
-    }
+if (-not (Test-Path $vencordFolder)) {
+    Write-Host "[ERROR] Vencord not found!" -ForegroundColor Red
+    Write-Host "Install Vencord from https://vencord.dev/download" -ForegroundColor Yellow
+    exit 1
 }
+
+Write-Host "[OK] Found Vencord at: $vencordFolder" -ForegroundColor Green
+
+# Step 2: Clone Vencord repo
+Write-Host ""
+Write-Host "[2/4] Cloning Vencord repo..." -ForegroundColor Yellow
+
+$vencordSrcPath = "$env:TEMP\Vencord"
+
+if (Test-Path $vencordSrcPath) {
+    Write-Host "  Removing existing Vencord folder..." -ForegroundColor Yellow
+    Set-Location -Path $env:TEMP
+    Remove-Item -Recurse -Force $vencordSrcPath -ErrorAction SilentlyContinue
+}
+
+git clone --depth 1 https://github.com/Vendicated/Vencord.git $vencordSrcPath
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "[ERROR] Failed to clone Vencord!" -ForegroundColor Red
+    exit 1
+}
+Write-Host "[OK] Vencord cloned successfully" -ForegroundColor Green
+
+# Step 3: Copy plugin to Vencord source
+Write-Host ""
+Write-Host "[3/4] Copying dmArchiver plugin..." -ForegroundColor Yellow
+
+$targetPluginDir = Join-Path $vencordSrcPath "src\plugins\dmArchiver"
+
+if (Test-Path $targetPluginDir) {
+    Remove-Item -Recurse -Force $targetPluginDir
+}
+
+Copy-Item -Recurse -Force $vencordFolder\plugins\dmArchiver $targetPluginDir
+Write-Host "[OK] Plugin copied to Vencord" -ForegroundColor Green
+
+# Step 4: Build Vencord
+Write-Host ""
+Write-Host "[4/4] Building Vencord..." -ForegroundColor Yellow
+Write-Host "  This may take a few minutes..." -ForegroundColor Yellow
+
+cd $vencordSrcPath
+
+if (-not (Test-Path "node_modules")) {
+    Write-Host "  Installing dependencies..." -ForegroundColor Yellow
+    pnpm install
+}
+
+Write-Host "  Building Vencord..." -ForegroundColor Yellow
+pnpm build
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "[ERROR] Build failed!" -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "[OK] Vencord built successfully!" -ForegroundColor Green
+
+# Step 5: Replace Discord's Vencord with built version
+Write-Host ""
+Write-Host "[5/5] Replacing Discord's Vencord..." -ForegroundColor Yellow
+
+# Backup original Vencord
+$backupPath = "$vencordFolder.original"
+if (-not (Test-Path $backupPath)) {
+    Rename-Item $vencordFolder $backupPath
+}
+
+# Copy built Vencord to Discord
+Copy-Item -Recurse -Force (Join-Path $vencordSrcPath "dist") $vencordFolder
+Write-Host "[OK] Discord's Vencord replaced!" -ForegroundColor Green
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Green
@@ -73,7 +112,7 @@ Write-Host "2. Restart Discord" -ForegroundColor White
 Write-Host "3. Check Settings > Vencord > Plugins for DMArchiver" -ForegroundColor White
 Write-Host ""
 
-Read-Host "Press Enter to open Discord settings..."
+Read-Host "Press Enter to open Discord..."
 Start-Process "explorer.exe" "shell:appsFolder\4693710e-302d-4bec-8bcd-c6e1699a4326!Discord"
 Write-Host ""
 Write-Host "Done!" -ForegroundColor Green
