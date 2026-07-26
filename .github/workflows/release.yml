@@ -14,75 +14,147 @@ permissions:
 jobs:
   release:
     runs-on: windows-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          fetch-depth: 0
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 10
-
-      - name: Build plugin
+      - name: Get version
+        id: version
         run: |
-          cd src/plugins/dmArchiver
-          # Vencord compiles .ts files at runtime, so we just need the source
-          if (Test-Path "dist") { Remove-Item -Recurse -Force "dist" }
-          New-Item -ItemType Directory -Path "dist" | Out-Null
-          Copy-Item -Path "index.ts" -Destination "dist/index.js" -Force
-        working-directory: src
+          if ($env:GITHUB_REF -match 'refs/tags/v(.+)') {
+            $version = $matches[1]
+          } else {
+            $version = "0.0.0-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+          }
+          Write-Output "version=$version" >> $env:GITHUB_OUTPUT
+        shell: pwsh
 
-      - name: Package as ZIP
+      - name: Build installer
+        id: build
         run: |
-          $version = if ($env:GITHUB_REF -match 'refs/tags/(.*)') { $matches[1] } else { "latest" }
-          $archiveName = "dmArchiver-$version.zip"
-          Compress-Archive -Path "src/plugins/dmArchiver/index.ts", "src/plugins/dmArchiver/README.md" -DestinationPath $archiveName -Force
-          Write-Output "archive=$archiveName" >> $env:GITHUB_OUTPUT
-        working-directory: src
-        id: package
+          $version = "${{ steps.version.outputs.version }}"
+          $installerContent = @"
+          # DMArchiver Installer v$version
+          Write-Host "=== DMArchiver Installer v$version ===" -ForegroundColor Cyan
+          Write-Host ""
+
+          $username = $env:USERNAME
+          $pluginName = 'dmArchiver'
+
+          # Find Discord version from app-settings.json
+          $appSettings = "C:\Users\$username\AppData\Roaming\Discord\app-settings.json"
+          if (Test-Path $appSettings) {
+              try {
+                  $settings = Get-Content $appSettings -Raw | ConvertFrom-Json
+                  if (\$settings.version) {
+                      \$discordVersion = \$settings.version
+                  }
+              } catch {
+                  Write-Host "Could not read Discord version, using default" -ForegroundColor Yellow
+                  \$discordVersion = "0.0.XXX"
+              }
+          } else {
+              Write-Host "Could not find app-settings.json, using default" -ForegroundColor Yellow
+              \$discordVersion = "0.0.XXX"
+          }
+
+          \$pluginDir = "C:\Users\$username\AppData\Roaming\Discord\\$discordVersion\modules\vencord\plugins\\$pluginName"
+
+          Write-Host "Discord Version: \$discordVersion" -ForegroundColor Green
+          Write-Host "Plugin Directory: \$pluginDir" -ForegroundColor Green
+          Write-Host ""
+
+          # Check if Discord is running
+          \$discordProcess = Get-Process -Name "Discord*" -ErrorAction SilentlyContinue
+          if (\$discordProcess) {
+              Write-Warning "Discord is running. Please close Discord before installing plugins."
+              Write-Host "Press any key to exit..."
+              \$null = \$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+              exit 1
+          }
+
+          # Create plugin directory if it doesn't exist
+          if (-not (Test-Path \$pluginDir)) {
+              Write-Host "Creating plugin directory..." -ForegroundColor Yellow
+              try {
+                  New-Item -ItemType Directory -Path \$pluginDir -Force | Out-Null
+              } catch {
+                  Write-Host "Error creating plugin directory: \$_" -ForegroundColor Red
+                  Write-Host "Press any key to exit..."
+                  \$null = \$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+                  exit 1
+              }
+          }
+
+          # Download latest release from GitHub
+          \$zipUrl = "https://github.com/redbelter/vencord-dm-archiver/releases/latest/download/dmArchiver-installer.zip"
+          \$zipPath = [System.IO.Path]::GetTempPath() + "dmArchiver.zip"
+
+          Write-Host "Downloading plugin from GitHub..." -ForegroundColor Cyan
+          try {
+              Invoke-WebRequest -Uri \$zipUrl -OutFile \$zipPath -UseBasicParsing
+          } catch {
+              Write-Host "Error downloading plugin: \$_" -ForegroundColor Red
+              Write-Host "Press any key to exit..."
+              \$null = \$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+              exit 1
+          }
+
+          # Extract
+          Write-Host "Extracting plugin..." -ForegroundColor Cyan
+          \$extractDir = [System.IO.Path]::GetTempPath() + "dmArchiver-extract"
+          if (Test-Path \$extractDir) { Remove-Item -Recurse -Force \$extractDir }
+          New-Item -ItemType Directory -Path \$extractDir -Force | Out-Null
+          Expand-Archive -Path \$zipPath -DestinationPath \$extractDir -Force
+
+          # Copy plugin files
+          Write-Host "Installing plugin..." -ForegroundColor Cyan
+          try {
+              Copy-Item -Path (Join-Path \$extractDir "index.ts") -Destination (Join-Path \$pluginDir "index.ts") -Force
+              Copy-Item -Path (Join-Path \$extractDir "README.md") -Destination (Join-Path \$pluginDir "README.md") -Force
+              Write-Host "Plugin installed successfully!" -ForegroundColor Green
+          } catch {
+              Write-Host "Error installing plugin: \$_" -ForegroundColor Red
+              Write-Host "Press any key to exit..."
+              \$null = \$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+              exit 1
+          }
+
+          # Clean up
+          Remove-Item -Path \$zipPath -Force
+          Remove-Item -Path \$extractDir -Recurse -Force
+
+          Write-Host ""
+          Write-Host "=== Installation Complete ===" -ForegroundColor Green
+          Write-Host ""
+          Write-Host "Next steps:" -ForegroundColor Cyan
+          Write-Host "1. Open Discord (or reload Vencord plugins)"
+          Write-Host "2. You can now use these commands:"
+          Write-Host "   /list-dm-users"
+          Write-Host "   /export-dm-media"
+          Write-Host "   /save-dm-text"
+          Write-Host "   /toggle-delete-commands"
+          Write-Host ""
+          Write-Host "Press any key to exit..."
+          \$null = \$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+          "@
+
+          Set-Content -Path "dmArchiver-installer.ps1" -Value $installerContent -NoNewline
+          Write-Output "installer=dmArchiver-installer.ps1" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: Package installer as ZIP
+        run: |
+          Compress-Archive -Path "dmArchiver-installer.ps1" -DestinationPath "dmArchiver-installer.zip" -Force
+        working-directory: src/plugins/dmArchiver
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: src/${{ steps.package.outputs.archive }}
-          generate_release_notes: true
-
-      - name: Upload Installer Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: installer
-          path: src/install.ps1
-
-      - name: Upload Plugin ZIP Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: plugin
-          path: src/${{ steps.package.outputs.archive }}
-
-  release-with-installer:
-    needs: release
-    runs-on: windows-latest
-    if: startsWith(github.ref, 'refs/tags/')
-
-    steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Create Release with All Assets
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            artifacts/plugin/*.zip
-            artifacts/installer/install.ps1
+          files: src/plugins/dmArchiver/dmArchiver-installer.zip
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
