@@ -3,9 +3,9 @@
 # 1. Clone Vencord from GitHub
 # 2. Copy the dmArchiver plugin
 # 3. Build Vencord
-# 4. Install to Discord
+# 4. Prompt to install to Discord
 
-$version = "1.5.0"
+$version = "1.6.0"
 Write-Host "========================================" -ForegroundColor Yellow
 Write-Host "  DMArchiver v$version - FULL AUTO" -ForegroundColor Yellow
 Write-Host "========================================" -ForegroundColor Yellow
@@ -77,10 +77,7 @@ Write-Host ""
 Write-Host "[4/5] Copying dmArchiver plugin..." -ForegroundColor Yellow
 
 # Find the source plugin folder (user's Vencord repo or the one we just cloned)
-$pluginSource = "$env:APPDATA\Discord\0.0.XXX\modules\vencord\plugins\dmArchiver"
-if (-not (Test-Path $pluginSource)) {
-    $pluginSource = "$env:TEMP\Vencord\src\plugins\dmArchiver"
-}
+$pluginSource = Join-Path $vencordFolder "plugins\dmArchiver"
 
 if (Test-Path $pluginSource) {
     $targetPluginDir = Join-Path $vencordSrcPath "src\plugins\dmArchiver"
@@ -91,7 +88,7 @@ if (Test-Path $pluginSource) {
     Write-Host "[OK] Plugin copied to Vencord" -ForegroundColor Green
 } else {
     Write-Host "[WARNING] Plugin not found at expected location" -ForegroundColor Yellow
-    Write-Host "  You may need to manually copy the plugin folder" -ForegroundColor Yellow
+    Write-Host "  Running the one-liner first may help" -ForegroundColor Yellow
 }
 
 # Step 5: Build Vencord
@@ -128,16 +125,19 @@ Write-Host "========================================" -ForegroundColor Green
 Write-Host "  BUILD COMPLETE!" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
 Write-Host ""
-Write-Host "Next steps:" -ForegroundColor Cyan
-Write-Host "1. Close Discord completely" -ForegroundColor White
-Write-Host "2. Run the Vencord installer (should be in dist/)" -ForegroundColor White
+
+# Prompt to install to Discord
+Write-Host ""
+Write-Host "[5/5] Installing to Discord..." -ForegroundColor Yellow
+Write-Host ""
+Write-Host "1. Close Discord completely (right-click taskbar icon > Quit)" -ForegroundColor White
+Write-Host "2. Run the Vencord installer in: $vencordSrcPath\dist" -ForegroundColor White
 Write-Host "3. Restart Discord" -ForegroundColor White
 Write-Host "4. Check Settings > Vencord > Plugins for DMArchiver" -ForegroundColor White
 Write-Host ""
-
-# Clean up temp files after a delay
-Start-Sleep -Seconds 5
-if (Test-Path $vencordSrcPath) {
-    Write-Host "Cleaning up temporary files..." -ForegroundColor Yellow
-    Remove-Item -Recurse -Force $vencordSrcPath -ErrorAction SilentlyContinue
-}
+Write-Host "When ready, press Enter to open the dist folder..."
+Read-Host
+Start-Process explorer.exe $vencordSrcPath\dist
+Write-Host ""
+Write-Host "Done!" -ForegroundColor Green
+Write-Host ""
