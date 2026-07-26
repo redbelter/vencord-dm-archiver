@@ -1,6 +1,6 @@
 # DMArchiver One-Liner Installer (PowerShell)
 
-$version = "1.2.0"
+$version = "1.2.1"
 Write-Host "DMArchiver Installer v$version" -ForegroundColor Yellow
 Write-Host ""
 
