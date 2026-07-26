@@ -3,11 +3,13 @@
 Run this in PowerShell:
 
 ```powershell
-irm "https://raw.githubusercontent.com/redbelter/vencord-dm-archiver/refs/heads/master/ONE-LINER.ps1" -OutFile "$env:TEMP\dmArchiver-install.ps1"; & "$env:TEMP\dmArchiver-install.ps1"
+irm "https://raw.githubusercontent.com/redbelter/vencord-dm-archiver/master/ONE-LINER.ps1" -OutFile "$env:TEMP\dmArchiver-install.ps1"; & "$env:TEMP\dmArchiver-install.ps1"
 ```
 
 This will:
+- Check if Vencord is installed
+- If not, show instructions to install it
 - Detect your Discord version
 - Create the plugin folder if needed
 - Download the plugin files
-- Confirm installation
+- Confirm installation with next steps
