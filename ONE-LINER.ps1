@@ -68,12 +68,26 @@ if ($downloadError) {
 Write-Host ""
 Write-Host "Plugin installed successfully!" -ForegroundColor Green
 Write-Host ""
+
+# Clear Discord cache to force reload
+$discordCache = "$env:LOCALAPPDATA\Discord\Cache"
+$discordCodeCache = "$env:LOCALAPPDATA\Discord\Code Cache"
+if (Test-Path $discordCache) {
+    Write-Host "Clearing Discord cache to force plugin reload..." -ForegroundColor Yellow
+    Remove-Item "$discordCache\*" -Recurse -Force -ErrorAction SilentlyContinue
+}
+if (Test-Path $discordCodeCache) {
+    Remove-Item "$discordCodeCache\*" -Recurse -Force -ErrorAction SilentlyContinue
+}
+Write-Host "Cache cleared." -ForegroundColor Cyan
+
+Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Cyan
-Write-Host "1. Close Discord completely (Right-click taskbar icon > Quit)"
+Write-Host "1. CLOSE DISCORD COMPLETELY (Task Manager > End all Discord processes)"
 Write-Host "2. Restart Discord"
 Write-Host "3. Or reload Vencord plugins: Settings > Vencord > Reload Plugins"
 Write-Host ""
-Write-Host "You should now see 'DMArchiver' in the plugin list" -ForegroundColor Green
+Write-Host "You should now see 'DMArchiver' in Settings > Vencord > Plugins" -ForegroundColor Green
 Write-Host ""
 Write-Host "Commands available:" -ForegroundColor Cyan
 Write-Host "  /list-dm-users"
