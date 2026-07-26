@@ -2,11 +2,11 @@
 # This script will:
 # 1. Auto-close Discord
 # 2. Clone Vencord from GitHub
-# 3. Download the dmArchiver plugin fresh from GitHub
+# 3. Copy the dmArchiver plugin from source repo
 # 4. Build Vencord with pnpm
 # 5. Replace Discord's Vencord with the built version
 
-$version = "2.14.0"
+$version = "2.15.0"
 Write-Host "========================================" -ForegroundColor Yellow
 Write-Host "  DMArchiver v$version - FULL AUTO" -ForegroundColor Yellow
 Write-Host "========================================" -ForegroundColor Yellow
@@ -68,30 +68,25 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "[OK] Vencord cloned" -ForegroundColor Green
 
-# Step 4: Download plugin fresh from GitHub
+# Step 4: Copy plugin from source repo to Vencord source
 Write-Host ""
-Write-Host "[4/9] Downloading plugin..." -ForegroundColor Yellow
+Write-Host "[4/9] Copying plugin from source repo..." -ForegroundColor Yellow
 
-$pluginScriptPath = "$env:TEMP\dmArchiver-download.ps1"
-irm "https://raw.githubusercontent.com/redbelter/vencord-dm-archiver/master/ONE-LINER.ps1" -OutFile $pluginScriptPath
-& $pluginScriptPath
+# Use the plugin from the source repo (not Discord's outdated version)
+$sourcePluginPath = "C:\Users\red\Vencord\src\plugins\dmArchiver"
+$targetPluginDir = Join-Path $vencordSrcPath "src\plugins\dmArchiver"
 
-Start-Sleep -Seconds 3
-
-$sourcePluginPath = Join-Path $vencordFolder "plugins\dmArchiver"
 if (-not (Test-Path $sourcePluginPath)) {
-    Write-Host "[ERROR] Plugin download failed!" -ForegroundColor Red
+    Write-Host "[ERROR] Plugin source not found at: $sourcePluginPath" -ForegroundColor Red
     exit 1
 }
-
-$targetPluginDir = Join-Path $vencordSrcPath "src\plugins\dmArchiver"
 
 if (Test-Path $targetPluginDir) {
     Remove-Item -Recurse -Force $targetPluginDir
 }
 
 Copy-Item -Recurse -Force $sourcePluginPath $targetPluginDir
-Write-Host "[OK] Plugin downloaded and copied" -ForegroundColor Green
+Write-Host "[OK] Plugin copied from source repo" -ForegroundColor Green
 
 # Step 5: Build Vencord
 Write-Host ""
@@ -189,5 +184,3 @@ if (Test-Path $logPath) {
 Write-Host ""
 Write-Host "Log saved to: $scriptLogPath" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "Note: Plugin files copied to Discord's Vencord src/plugins folder" -ForegroundColor Cyan
-Write-Host "If the plugin doesn't appear, check Settings > Vencord > Plugins manually" -ForegroundColor Yellow
