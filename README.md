@@ -2,41 +2,47 @@
 
 A Vencord plugin to export and preserve DM content: media, images, and text history.
 
-## Installation
+## ⚠️ Important: Vencord Must Be Built From Source
 
-### For Vencord Users (Pre-built Vencord)
+Vencord is a compiled Electron app - it doesn't support runtime plugin loading. You **must build Vencord from source** to use this plugin.
 
-If you're using the **pre-built Vencord** from vencord.dev, you need to build Vencord from source with this plugin included:
-
-1. Clone the Vencord repo
-2. Copy the `dmArchiver` folder to `src/plugins/dmArchiver`
-3. Build Vencord with `pnpm build`
-4. Install the built Vencord to Discord
-
-### For Vencord Devs (Building from Source)
+### Quick Start (Build Vencord)
 
 1. Clone Vencord: `git clone https://github.com/Vendicated/Vencord.git`
-2. Copy the `dmArchiver` folder to `src/plugins/`
-3. Run `pnpm install` then `pnpm build`
-4. The plugin will be compiled into Vencord
+2. Copy `dmArchiver` folder to `src/plugins/dmArchiver`
+3. Run `pnpm build` in the Vencord folder
+4. Install the built Vencord to Discord
 
-### Commands
+**See [INSTALL.md](./INSTALL.md) for detailed steps.**
 
-- `/list-dm-users` - List all DM users available for export (ID + username)
-- `/export-dm-media` - Export all media from current DM conversation
-- `/save-dm-text` - Save DM text history to file
-- `/toggle-delete-commands` - Enable/disable delete-related commands
-- `/delete-dm-messages` - Delete your own messages (requires enabling in settings)
-- `/delete-all-my-messages` - Delete all your messages in current DM
+## Installation (After Building)
 
-### Settings
+Once Vencord is built with this plugin:
 
-- `showDeleteOption` - Enable/disable delete commands (disabled by default)
+1. Close Discord completely
+2. Install the built Vencord to Discord
+3. Restart Discord
+4. Go to Settings > Vencord > Plugins > DMArchiver
 
-### PII Statement
+## Commands
 
-This plugin does NOT collect or store personal data. All data is downloaded to your local machine. Files are saved to your selected folder or downloaded on a per-request basis.
+| Command | Description |
+|---------|-------------|
+| `/list-dm-users` | List all DM users (ID + username) for export |
+| `/export-dm-media` | Export all media from current DM |
+| `/save-dm-text` | Save DM text history to file |
+| `/toggle-delete-commands` | Enable/disable delete commands |
+| `/delete-dm-messages` | Delete your own messages (opt-in) |
+| `/delete-all-my-messages` | Delete all your messages in current DM |
+
+## Settings
+
+- `showDeleteOption` - Enable/disable delete-related commands (disabled by default)
+
+## PII Statement
+
+This plugin does NOT collect or store personal data. All data is downloaded to your local machine only.
 
 ## About
 
-This is a combined version of dmMediaExporter and dmMessageDeleter, focusing on export as the primary feature with optional, opt-in deletion.
+This combines `dmMediaExporter` and `dmMessageDeleter` into one plugin, focusing on export as the primary feature with optional, opt-in deletion.
