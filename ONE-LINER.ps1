@@ -3,8 +3,8 @@
 # Find Discord version folder and check for Vencord
 $discordAppData = "$env:APPDATA\Discord"
 
-# Get all Discord version folders
-$versionFolders = Get-ChildItem -Path $discordAppData -Directory | Where-Object { $_.Name -match "^[0-9]+\.[0-9]+\.[0-9]+" }
+# Get all Discord version folders (matches patterns like 0.0.XXX, 1.0.9249, etc.)
+$versionFolders = Get-ChildItem -Path $discordAppData -Directory | Where-Object { $_.Name -match "^[0-9]+\.[0-9]+\." }
 
 if (-not $versionFolders) {
     Write-Host "No Discord version folders found!" -ForegroundColor Red
