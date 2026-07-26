@@ -1,29 +1,29 @@
 # DMArchiver One-Liner Installer (PowerShell)
 
-$version = "1.3.0"
+$version = "1.3.1"
 Write-Host "DMArchiver Installer v$version" -ForegroundColor Yellow
 Write-Host ""
 
 # Find Discord version folder and check for Vencord
 $discordAppData = "$env:APPDATA\Discord"
 
-# Get all Discord version folders (matches patterns like 0.0.XXX, 1.0.9249, etc.)
+# Get all Discord version folders
 $versionFolders = Get-ChildItem -Path $discordAppData -Directory | Where-Object { $_.Name -match "^[0-9]+\.[0-9]+\." }
 
 if (-not $versionFolders) {
     Write-Host "No Discord version folders found!" -ForegroundColor Red
-    Write-Host "Please make sure Discord is installed and run this script again."
+    Write-Host "Please install Discord and run this script again."
     exit 1
 }
 
-# Find the latest version folder (highest version number)
+# Find the latest version folder
 $versionFolder = $versionFolders | Sort-Object Name -Descending | Select-Object -First 1
 $latestVersion = $versionFolder.Name
 
-Write-Host "Latest Discord version folder: $latestVersion" -ForegroundColor Cyan
+Write-Host "Discord Version: $latestVersion" -ForegroundColor Cyan
 Write-Host ""
 
-# Check if Vencord exists in the latest version folder (where Discord is actually running)
+# Check if Vencord exists
 $vencordFolder = Join-Path $discordAppData (Join-Path $latestVersion "modules\vencord")
 
 if (-not (Test-Path $vencordFolder)) {
@@ -31,25 +31,17 @@ if (-not (Test-Path $vencordFolder)) {
     Write-Host ""
     Write-Host "Vencord is installed at: $vencordFolder"
     Write-Host ""
-    Write-Host "Please install Vencord first:" -ForegroundColor Yellow
+    Write-Host "Please install Vencord from: https://vencord.dev/download/#windows"
     Write-Host ""
-    Write-Host "1. Download Vencord for Windows:"
-    Write-Host "   https://vencord.dev/download/#windows"
-    Write-Host ""
-    Write-Host "2. Run the installer"
-    Write-Host "3. Restart Discord"
-    Write-Host ""
-    Write-Host "Then run this installer again."
     exit 1
 }
 
-Write-Host "Discord Version: $latestVersion" -ForegroundColor Green
 Write-Host "Vencord found at: $vencordFolder" -ForegroundColor Green
 
-# Create plugin folder in the latest version (where Discord is actually running)
-$pluginDir = Join-Path $discordAppData (Join-Path $latestVersion "modules\vencord\plugins\dmArchiver")
+# Create plugin folder
+$pluginDir = Join-Path $vencordFolder "plugins\dmArchiver"
 if (-not (Test-Path $pluginDir)) {
-    Write-Host "Creating plugin directory in latest version folder..." -ForegroundColor Yellow
+    Write-Host "Creating plugin directory..." -ForegroundColor Yellow
     New-Item -ItemType Directory -Path $pluginDir -Force | Out-Null
 }
 
@@ -66,32 +58,14 @@ irm "$baseUrl/index.ts" -Headers $headers -OutFile (Join-Path $pluginDir "index.
 irm "$baseUrl/README.md" -Headers $headers -OutFile (Join-Path $pluginDir "README.md")
 
 Write-Host ""
-Write-Host "Plugin installed successfully!" -ForegroundColor Green
+Write-Host "Plugin files downloaded successfully!" -ForegroundColor Green
 Write-Host ""
-
-# Clear Discord cache to force reload
-$discordCache = "$env:LOCALAPPDATA\Discord\Cache"
-$discordCodeCache = "$env:LOCALAPPDATA\Discord\Code Cache"
-if (Test-Path $discordCache) {
-    Write-Host "Clearing Discord cache to force plugin reload..." -ForegroundColor Yellow
-    Remove-Item "$discordCache\*" -Recurse -Force -ErrorAction SilentlyContinue
-}
-if (Test-Path $discordCodeCache) {
-    Remove-Item "$discordCodeCache\*" -Recurse -Force -ErrorAction SilentlyContinue
-}
-Write-Host "Cache cleared." -ForegroundColor Cyan
-
+Write-Host "To use this plugin, you must build Vencord from source:" -ForegroundColor Yellow
 Write-Host ""
-Write-Host "Next steps:" -ForegroundColor Cyan
-Write-Host "1. CLOSE DISCORD COMPLETELY (Task Manager > End all Discord processes)"
-Write-Host "2. Restart Discord"
-Write-Host "3. Or reload Vencord plugins: Settings > Vencord > Reload Plugins"
+Write-Host "1. Clone Vencord: git clone https://github.com/Vendicated/Vencord.git" -ForegroundColor White
+Write-Host "2. Copy dmArchiver folder to src/plugins/" -ForegroundColor White
+Write-Host "3. Run: pnpm build" -ForegroundColor White
+Write-Host "4. Install to Discord" -ForegroundColor White
 Write-Host ""
-Write-Host "You should now see 'DMArchiver' in Settings > Vencord > Plugins" -ForegroundColor Green
-Write-Host ""
-Write-Host "Commands available:" -ForegroundColor Cyan
-Write-Host "  /list-dm-users"
-Write-Host "  /export-dm-media"
-Write-Host "  /save-dm-text"
-Write-Host "  /toggle-delete-commands"
+Write-Host "See INSTALL.md for detailed instructions" -ForegroundColor Cyan
 Write-Host ""
