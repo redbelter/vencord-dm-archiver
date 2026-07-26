@@ -25,11 +25,6 @@ Export and preserve Discord DM content: media, images, and text history. Include
    ```
    (Replace `<your-username>` with your Windows username and `0.0.XXX` with your Discord version)
 
-   *For redbelter's installation:*
-   ```
-   C:\\Users\\redbelter\\AppData\\Roaming\\Discord\\0.0.XXX\\modules\\vencord\\plugins\\
-   ```
-
 2. Reload Discord (or just reload Vencord plugins via Settings > Vencord > Reload Plugins)
 
 3. Commands will be available immediately
