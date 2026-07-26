@@ -8,7 +8,7 @@ irm "https://raw.githubusercontent.com/redbelter/vencord-dm-archiver/master/ONE-
 
 This will:
 - Check if Vencord is installed
-- If not, show instructions to install it
+- If not, show instructions to download from vencord.dev/download
 - Detect your Discord version
 - Create the plugin folder if needed
 - Download the plugin files

@@ -1,34 +1,26 @@
 # DMArchiver One-Liner Installer (PowerShell)
 
 # Check if Vencord is installed
-$discordAppData = "$env:APPDATA\Discord"
-$modulesFolder = "$discordAppData\modules"
-$vencordFolder = "$modulesFolder\vencord"
+$vencordFolder = "$env:APPDATA\Discord\modules\vencord"
 
-if (-not (Test-Path $modulesFolder)) {
+if (-not (Test-Path $vencordFolder)) {
     Write-Host "Vencord not found!" -ForegroundColor Red
     Write-Host ""
     Write-Host "Please install Vencord first:" -ForegroundColor Yellow
-    Write-Host "1. Download Vencord Installer: https://github.com/Vendicated/Vencord/releases/latest"
-    Write-Host "2. Run the installer (VencordInstaller.exe)"
+    Write-Host ""
+    Write-Host "1. Download Vencord for Windows:"
+    Write-Host "   https://vencord.dev/download/#windows"
+    Write-Host ""
+    Write-Host "2. Run the installer"
     Write-Host "3. Restart Discord"
     Write-Host ""
     Write-Host "Then run this installer again."
     exit 1
 }
 
-if (-not (Test-Path $vencordFolder)) {
-    Write-Host "Vencord modules folder not found!" -ForegroundColor Red
-    Write-Host ""
-    Write-Host "Please reinstall Vencord via the installer."
-    Write-Host "Download: https://github.com/Vendicated/Vencord/releases/latest"
-    exit 1
-}
-
 Write-Host "Vencord found at: $vencordFolder" -ForegroundColor Green
 
 # Detect Discord version
-$username = $env:USERNAME
 $appSettings = "$env:APPDATA\Discord\app-settings.json"
 $discordVersion = "0.0.XXX"
 
