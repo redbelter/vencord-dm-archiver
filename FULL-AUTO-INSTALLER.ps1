@@ -2,11 +2,11 @@
 # This script will:
 # 1. Auto-close Discord
 # 2. Clone Vencord from GitHub
-# 3. Copy the dmArchiver plugin
+# 3. Download the dmArchiver plugin fresh from GitHub
 # 4. Build Vencord with pnpm
 # 5. Replace Discord's Vencord with the built version
 
-$version = "2.12.0"
+$version = "2.14.0"
 Write-Host "========================================" -ForegroundColor Yellow
 Write-Host "  DMArchiver v$version - FULL AUTO" -ForegroundColor Yellow
 Write-Host "========================================" -ForegroundColor Yellow
@@ -68,34 +68,30 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "[OK] Vencord cloned" -ForegroundColor Green
 
-# Step 4: Copy plugin to Vencord source
+# Step 4: Download plugin fresh from GitHub
 Write-Host ""
-Write-Host "[4/9] Copying plugin..." -ForegroundColor Yellow
+Write-Host "[4/9] Downloading plugin..." -ForegroundColor Yellow
+
+$pluginScriptPath = "$env:TEMP\dmArchiver-download.ps1"
+irm "https://raw.githubusercontent.com/redbelter/vencord-dm-archiver/master/ONE-LINER.ps1" -OutFile $pluginScriptPath
+& $pluginScriptPath
+
+Start-Sleep -Seconds 3
 
 $sourcePluginPath = Join-Path $vencordFolder "plugins\dmArchiver"
-$targetPluginDir = Join-Path $vencordSrcPath "src\plugins\dmArchiver"
-
 if (-not (Test-Path $sourcePluginPath)) {
-    Write-Host "[ERROR] Plugin folder not found!" -ForegroundColor Red
-    Write-Host ""
-    Write-Host "Running the one-liner to download the plugin..." -ForegroundColor Yellow
-    irm "https://raw.githubusercontent.com/redbelter/vencord-dm-archiver/master/ONE-LINER.ps1" -OutFile "$env:TEMP\dmArchiver-one.ps1"; & "$env:TEMP\dmArchiver-one.ps1"
-    
-    # Wait for plugin to be downloaded
-    Start-Sleep -Seconds 3
-    
-    if (-not (Test-Path $sourcePluginPath)) {
-        Write-Host "[ERROR] Plugin still not found!" -ForegroundColor Red
-        exit 1
-    }
+    Write-Host "[ERROR] Plugin download failed!" -ForegroundColor Red
+    exit 1
 }
+
+$targetPluginDir = Join-Path $vencordSrcPath "src\plugins\dmArchiver"
 
 if (Test-Path $targetPluginDir) {
     Remove-Item -Recurse -Force $targetPluginDir
 }
 
 Copy-Item -Recurse -Force $sourcePluginPath $targetPluginDir
-Write-Host "[OK] Plugin copied" -ForegroundColor Green
+Write-Host "[OK] Plugin downloaded and copied" -ForegroundColor Green
 
 # Step 5: Build Vencord
 Write-Host ""
@@ -109,7 +105,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "[OK] Vencord built!" -ForegroundColor Green
 
-# Step 6: Replace Discord's Vencord (with src/plugins and dist)
+# Step 6: Replace Discord's Vencord
 Write-Host ""
 Write-Host "[6/9] Replacing Discord's Vencord..." -ForegroundColor Yellow
 
@@ -120,7 +116,7 @@ if (-not (Test-Path $backupPath)) {
 
 # Copy src/plugins (so Vencord can find plugins at runtime)
 Copy-Item -Recurse -Force (Join-Path $vencordSrcPath "src\plugins\*") (Join-Path $vencordFolder "src\plugins")
-# Copy dist (compiled files) - copy individual files to root
+# Copy dist (compiled files)
 $distSrc = Join-Path $vencordSrcPath "dist"
 $distDest = $vencordFolder
 Get-ChildItem $distSrc -File | Copy-Item -Destination $distDest -Force
