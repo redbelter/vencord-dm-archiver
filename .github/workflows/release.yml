@@ -150,13 +150,12 @@ jobs:
 
       - name: Package installer as ZIP
         run: |
-          Compress-Archive -Path "dmArchiver-installer.ps1" -DestinationPath "dmArchiver-installer.zip" -Force
-        working-directory: src/plugins/dmArchiver
+          Compress-Archive -Path "./dmArchiver-installer.ps1" -DestinationPath "./dmArchiver-installer.zip" -Force
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: src/plugins/dmArchiver/dmArchiver-installer.zip
+          files: "./dmArchiver-installer.zip"
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
