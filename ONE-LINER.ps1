@@ -1,6 +1,6 @@
 # DMArchiver One-Liner Installer (PowerShell)
 
-$version = "1.2.1"
+$version = "1.3.0"
 Write-Host "DMArchiver Installer v$version" -ForegroundColor Yellow
 Write-Host ""
 
@@ -55,15 +55,15 @@ if (-not (Test-Path $pluginDir)) {
 
 Write-Host "Plugin Directory: $pluginDir" -ForegroundColor Green
 
-# Download plugin files (from repo root)
+# Download plugin files with cache-busting headers
 $baseUrl = "https://raw.githubusercontent.com/redbelter/vencord-dm-archiver/master"
-irm "$baseUrl/index.ts" -OutFile (Join-Path $pluginDir "index.ts") -ErrorVariable downloadError
-irm "$baseUrl/README.md" -OutFile (Join-Path $pluginDir "README.md")
-
-if ($downloadError) {
-    Write-Host "Failed to download plugin files. Please check your internet connection." -ForegroundColor Red
-    exit 1
+$headers = @{
+    "Cache-Control" = "no-cache, no-store, must-revalidate"
+    "Pragma" = "no-cache"
+    "Expires" = "0"
 }
+irm "$baseUrl/index.ts" -Headers $headers -OutFile (Join-Path $pluginDir "index.ts")
+irm "$baseUrl/README.md" -Headers $headers -OutFile (Join-Path $pluginDir "README.md")
 
 Write-Host ""
 Write-Host "Plugin installed successfully!" -ForegroundColor Green
