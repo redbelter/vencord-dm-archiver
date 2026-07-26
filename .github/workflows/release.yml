@@ -7,6 +7,9 @@ on:
     paths:
       - 'src/plugins/dmArchiver/**'
   workflow_dispatch:
+  push_tags:
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
