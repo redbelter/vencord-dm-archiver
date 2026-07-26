@@ -156,3 +156,8 @@ Write-Host "Check Settings > Vencord > Plugins for DMArchiver" -ForegroundColor 
 Write-Host ""
 Read-Host "Press Enter to open Discord..."
 Start-Process "Discord"
+
+# Copy plugin source to Discord's vencord for runtime loading (if supported)
+Write-Host ""
+Write-Host "Note: Plugin files copied to Discord's Vencord src/plugins folder" -ForegroundColor Cyan
+Write-Host "If Vencord doesn't load the plugin, check Settings > Vencord > Plugins" -ForegroundColor Yellow
