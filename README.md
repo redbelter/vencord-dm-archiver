@@ -102,3 +102,12 @@ GPL-3.0-or-later
 ## Author
 
 [Devs.redbelter](https://github.com/redbelter)
+
+## PII Statement
+
+This plugin does NOT collect, store, or transmit any personally identifiable information (PII). The installer script only uses:
+- `$env:USERNAME` - Your Windows username (local only)
+- Discord app settings (read-only, local only)
+- GitHub API to download the plugin (public repository access only)
+
+All file paths are local to your machine and never leave your computer.
