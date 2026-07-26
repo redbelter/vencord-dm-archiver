@@ -57,7 +57,9 @@ $vencordSrcPath = "$env:TEMP\Vencord"
 
 if (Test-Path $vencordSrcPath) {
     Write-Host "  Removing existing Vencord folder..." -ForegroundColor Yellow
-    Remove-Item -Recurse -Force $vencordSrcPath
+    # Change directory first to avoid issues
+    Set-Location -Path $env:TEMP
+    Remove-Item -Recurse -Force $vencordSrcPath -ErrorAction SilentlyContinue
 }
 
 try {
