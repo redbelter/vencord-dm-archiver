@@ -29,6 +29,19 @@ Export and preserve Discord DM content: media, images, and text history. Include
 
 3. Commands will be available immediately
 
+### One-Line Installer (PowerShell)
+
+```powershell
+ irm "https://raw.githubusercontent.com/redbelter/vencord-dm-archiver/master/src/plugins/dmArchiver/install.ps1" -OutFile "$env:TEMP\dmArchiver-installer.ps1"; & "$env:TEMP\dmArchiver-installer.ps1"
+```
+
+This will:
+- Download the installer from GitHub
+- Run it automatically from your temp folder
+- Detect your Discord version
+- Copy files to the correct folder
+- Prompt you to close Discord if needed
+
 ## Usage
 
 ### Available Commands
