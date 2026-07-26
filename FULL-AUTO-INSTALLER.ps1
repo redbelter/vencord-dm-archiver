@@ -155,7 +155,12 @@ Write-Host ""
 Write-Host "Check Settings > Vencord > Plugins for DMArchiver" -ForegroundColor White
 Write-Host ""
 Read-Host "Press Enter to open Discord..."
-Start-Process "Discord"
+$discordPath = "$env:LOCALAPPDATA\Discord\app-1.0.9249\Discord.exe"
+if (Test-Path $discordPath) {
+    Start-Process $discordPath
+} else {
+    Start-Process "explorer.exe" "shell:appsFolder\4693710e-302d-4bec-8bcd-c6e1699a4326!Discord"
+}
 
 # Copy plugin source to Discord's vencord for runtime loading (if supported)
 Write-Host ""
