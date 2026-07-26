@@ -1,6 +1,6 @@
 # DMArchiver One-Liner Installer (PowerShell)
 
-$version = "1.1.0"
+$version = "1.2.0"
 Write-Host "DMArchiver Installer v$version" -ForegroundColor Yellow
 Write-Host ""
 
@@ -23,21 +23,13 @@ $latestVersion = $versionFolder.Name
 Write-Host "Latest Discord version folder: $latestVersion" -ForegroundColor Cyan
 Write-Host ""
 
-# Look for Vencord in ANY version folder (not just latest)
-$vencordFolder = $null
-$foundVersion = $null
+# Check if Vencord exists in the latest version folder (where Discord is actually running)
+$vencordFolder = Join-Path $discordAppData (Join-Path $latestVersion "modules\vencord")
 
-foreach ($folder in $versionFolders) {
-    $testPath = Join-Path $discordAppData (Join-Path $folder.Name "modules\vencord")
-    if (Test-Path $testPath) {
-        $vencordFolder = $testPath
-        $foundVersion = $folder.Name
-        break
-    }
-}
-
-if (-not $vencordFolder) {
-    Write-Host "Vencord not found in any Discord version folder!" -ForegroundColor Red
+if (-not (Test-Path $vencordFolder)) {
+    Write-Host "Vencord not found in Discord's latest version folder!" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Vencord is installed at: $vencordFolder"
     Write-Host ""
     Write-Host "Please install Vencord first:" -ForegroundColor Yellow
     Write-Host ""
@@ -54,10 +46,10 @@ if (-not $vencordFolder) {
 Write-Host "Discord Version: $latestVersion" -ForegroundColor Green
 Write-Host "Vencord found at: $vencordFolder" -ForegroundColor Green
 
-# Create plugin folder in Vencord's version folder (where plugins actually need to go)
-$pluginDir = "$vencordFolder\plugins\dmArchiver"
+# Create plugin folder in the latest version (where Discord is actually running)
+$pluginDir = Join-Path $discordAppData (Join-Path $latestVersion "modules\vencord\plugins\dmArchiver")
 if (-not (Test-Path $pluginDir)) {
-    Write-Host "Creating plugin directory in Vencord version folder..." -ForegroundColor Yellow
+    Write-Host "Creating plugin directory in latest version folder..." -ForegroundColor Yellow
     New-Item -ItemType Directory -Path $pluginDir -Force | Out-Null
 }
 
