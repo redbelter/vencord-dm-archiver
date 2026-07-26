@@ -3,7 +3,7 @@
 Run this in PowerShell:
 
 ```powershell
-irm "https://raw.githubusercontent.com/redbelter/vencord-dm-archiver/master/src/plugins/dmArchiver/ONE-LINER.ps1" -OutFile "$env:TEMP\dmArchiver-install.ps1"; & "$env:TEMP\dmArchiver-install.ps1"
+irm "https://raw.githubusercontent.com/redbelter/vencord-dm-archiver/refs/heads/master/ONE-LINER.ps1" -OutFile "$env:TEMP\dmArchiver-install.ps1"; & "$env:TEMP\dmArchiver-install.ps1"
 ```
 
 This will:
