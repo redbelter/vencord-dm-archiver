@@ -1,7 +1,20 @@
 # DMArchiver One-Liner Installer (PowerShell)
 
-# Check if Vencord is installed
-$vencordFolder = "$env:APPDATA\Discord\modules\vencord"
+# Find Discord version folder and check for Vencord
+$discordAppData = "$env:APPDATA\Discord"
+
+# Get latest Discord version folder
+$versionFolders = Get-ChildItem -Path $discordAppData -Directory | Where-Object { $_.Name -match "^0\." }
+$versionFolder = $versionFolders | Sort-Object Name -Descending | Select-Object -First 1
+
+if (-not $versionFolder) {
+    Write-Host "Discord version folder not found!" -ForegroundColor Red
+    Write-Host "Please make sure Discord is installed and run this script again."
+    exit 1
+}
+
+$discordVersion = $versionFolder.Name
+$vencordFolder = "$discordAppData\$discordVersion\modules\vencord"
 
 if (-not (Test-Path $vencordFolder)) {
     Write-Host "Vencord not found!" -ForegroundColor Red
@@ -18,32 +31,16 @@ if (-not (Test-Path $vencordFolder)) {
     exit 1
 }
 
+Write-Host "Discord Version: $discordVersion" -ForegroundColor Green
 Write-Host "Vencord found at: $vencordFolder" -ForegroundColor Green
 
-# Detect Discord version
-$appSettings = "$env:APPDATA\Discord\app-settings.json"
-$discordVersion = "0.0.XXX"
-
-if (Test-Path $appSettings) {
-    try {
-        $settings = Get-Content $appSettings -Raw | ConvertFrom-Json
-        if ($settings.version) {
-            $discordVersion = $settings.version
-        }
-    } catch {
-        Write-Host "Could not read Discord version" -ForegroundColor Yellow
-    }
-}
-
-$pluginDir = "$env:APPDATA\Discord\$discordVersion\modules\vencord\plugins\dmArchiver"
-
-# Create plugin folder if needed
+# Create plugin folder
+$pluginDir = "$vencordFolder\plugins\dmArchiver"
 if (-not (Test-Path $pluginDir)) {
     Write-Host "Creating plugin directory..." -ForegroundColor Yellow
     New-Item -ItemType Directory -Path $pluginDir -Force | Out-Null
 }
 
-Write-Host "Discord Version: $discordVersion" -ForegroundColor Green
 Write-Host "Plugin Directory: $pluginDir" -ForegroundColor Green
 
 # Download plugin files (from repo root)
