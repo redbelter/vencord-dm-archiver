@@ -28,7 +28,7 @@ if (-not (Test-Path $vencordFolder)) {
 Write-Host "[1/3] Vencord found: $vencordFolder" -ForegroundColor Green
 
 # Step 2: Create plugin folder
-$pluginDir = Join-Path $vencordFolder "plugins\dmArchiver"
+$pluginDir = Join-Path $vencordFolder "src\\plugins\\dmArchiver"
 if (-not (Test-Path $pluginDir)) {
     Write-Host "[2/3] Creating plugin folder..." -ForegroundColor Yellow
     New-Item -ItemType Directory -Path $pluginDir -Force | Out-Null
