@@ -9,9 +9,12 @@ import { definePluginSettings } from "@api/Settings";
 import { Devs } from "@utils/constants";
 import definePlugin, { OptionType } from "@utils/types";
 import { EmbedJSON, MessageAttachment, MessageJSON } from "@vencord/discord-types";
-import { ChannelStore, Constants, MessageStore, RestAPI, showToast, Toasts, UserStore } from "@webpack/common";
+import { ChannelStore, MessageStore, RestAPI, Toasts, UserStore } from "@webpack/common";
+import { waitFor } from "@webpack";
 
 const Native = VencordNative.pluginHelpers.MinimalPlugin as any;
+let Endpoints: Record<string, any>;
+waitFor(["MESSAGE_CREATE_ATTACHMENT_UPLOAD"], _ => Endpoints = _);
 
 const settings = definePluginSettings({
     downloadFolder: {
@@ -422,7 +425,7 @@ async function fetchMessages(channelId: string): Promise<MessageJSON[]> {
         const query: Record<string, any> = { limit: 100 };
         if (before) query.before = before;
         try {
-            const response = await RestAPI.get({ url: Constants.Endpoints.MESSAGES(channelId), query });
+            const response = await RestAPI.get({ url: Endpoints.MESSAGES(channelId), query });
             const body = response.body as MessageJSON[] | undefined;
             if (!Array.isArray(body) || body.length === 0) break;
 
@@ -497,7 +500,7 @@ async function exportAllDMImages(specificUserId?: string) {
 
                 const messages = await fetchMessages(channel.id);
                 if (!messages.length) {
-                    showToast(`DMArchiver: no messages found for user ${username}`, Toasts.Type.MESSAGE);
+                    Toasts.show({ message: `DMArchiver: no messages found for user ${username}`, id: Toasts.genId(), type: Toasts.Type.MESSAGE });
                     continue;
                 }
 
@@ -552,7 +555,7 @@ async function exportAllDMImages(specificUserId?: string) {
 
         const messages = await fetchMessages(channelId);
         if (!messages.length) {
-            showToast(`DMArchiver: no messages found for user ${username}`, Toasts.Type.MESSAGE);
+            Toasts.show({ message: `DMArchiver: no messages found for user ${username}`, id: Toasts.genId(), type: Toasts.Type.MESSAGE });
             continue;
         }
 
@@ -599,7 +602,7 @@ async function exportAllDMImages(specificUserId?: string) {
                 } else {
                     savedImages++;
                     if (savedImages % 10 === 0) {
-                        showToast(`DMArchiver: saved ${savedImages} images`, Toasts.Type.SUCCESS);
+                        Toasts.show({ message: `DMArchiver: saved ${savedImages} images`, id: Toasts.genId(), type: Toasts.Type.SUCCESS });
                     }
                 }
             }
@@ -609,7 +612,7 @@ async function exportAllDMImages(specificUserId?: string) {
     if (skippedMediaEntries.length) {
         try {
             await saveSkippedMediaReport(skippedMediaEntries);
-            showToast(`DMArchiver: saved skipped-media report (${skippedMediaEntries.length} entries)`, Toasts.Type.SUCCESS);
+            Toasts.show({ message: `DMArchiver: saved skipped-media report (${skippedMediaEntries.length} entries)`, id: Toasts.genId(), type: Toasts.Type.SUCCESS });
         } catch (error) {
             console.warn("DMArchiver: failed to save skipped media report", error);
         }
@@ -680,7 +683,7 @@ async function deleteUserMessages(channelId: string, batchSize: number = 20, del
             while (attempt < 3 && !deletedThisMessage) {
                 attempt++;
                 try {
-                    const response = await RestAPI.del({ url: Constants.Endpoints.MESSAGE(channelId, message.id) });
+                    const response = await RestAPI.del({ url: Endpoints.MESSAGE(channelId, message.id) });
                     const success = response?.ok || response?.status === 204 || response?.status === 200;
                     if (success) {
                         deleted++;
@@ -845,10 +848,10 @@ export default definePlugin({
     start() {
         applyQuestHiding(settings.store.hideQuestStuff);
         console.log("DMArchiver started - use /export-dm-media or /list-dm-users to begin.");
-        showToast("DMArchiver loaded: /export-dm-media available", Toasts.Type.MESSAGE);
+        Toasts.show({ message: "DMArchiver loaded: /export-dm-media available", id: Toasts.genId(), type: Toasts.Type.MESSAGE });
 
         if (settings.store.showDeleteOption) {
-            showToast("DMArchiver: delete commands ENABLED (use with caution)", Toasts.Type.MESSAGE);
+            Toasts.show({ message: "DMArchiver: delete commands ENABLED (use with caution)", id: Toasts.genId(), type: Toasts.Type.MESSAGE });
         }
     },
 
@@ -930,19 +933,19 @@ export default definePlugin({
                     const externalSettingInfo = settings.store.exportExternalMedia ? " (external included)" : "";
 
                     if (targetUserId) {
-                        showToast(`DMArchiver: exporting media for user ${targetUserId}`, Toasts.Type.MESSAGE);
+                        Toasts.show({ message: `DMArchiver: exporting media for user ${targetUserId}`, id: Toasts.genId(), type: Toasts.Type.MESSAGE });
                     } else {
-                        showToast("DMArchiver: exporting media for all DMs", Toasts.Type.MESSAGE);
+                        Toasts.show({ message: "DMArchiver: exporting media for all DMs", id: Toasts.genId(), type: Toasts.Type.MESSAGE });
                     }
 
                     const { foundImages, savedImages } = await exportAllDMImages(targetUserId);
                     const msg = `DMArchiver: done, found ${foundImages}, saved ${savedImages} images.${externalSettingInfo}`;
-                    showToast(msg, Toasts.Type.SUCCESS);
+                    Toasts.show({ message: msg, id: Toasts.genId(), type: Toasts.Type.SUCCESS });
                     return { content: msg };
                 } catch (error) {
                     const msg = `DMArchiver: export failed: ${String(error)}`;
                     console.error(msg, error);
-                    showToast(msg, Toasts.Type.FAILURE);
+                    Toasts.show({ message: msg, id: Toasts.genId(), type: Toasts.Type.FAILURE });
                     return { content: msg };
                 }
             }
@@ -962,10 +965,10 @@ export default definePlugin({
                 try {
                     const targetUserId = getCommandUserId(args);
                     if (!targetUserId) {
-                        showToast("DMArchiver: exporting all DM conversations...", Toasts.Type.MESSAGE);
+                        Toasts.show({ message: "DMArchiver: exporting all DM conversations...", id: Toasts.genId(), type: Toasts.Type.MESSAGE });
                         const { savedFiles, totalConversations } = await saveAllDMsAsText();
                         const msg = `✅ Saved ${savedFiles} DM conversation files for ${totalConversations} conversations.`;
-                        showToast(msg, Toasts.Type.SUCCESS);
+                        Toasts.show({ message: msg, id: Toasts.genId(), type: Toasts.Type.SUCCESS });
                         return { content: msg };
                     }
 
@@ -979,26 +982,26 @@ export default definePlugin({
                                 return { content: `No DM channel found for user ${targetUserId}` };
                             }
 
-                            showToast("DMArchiver: saving DM conversation...", Toasts.Type.MESSAGE);
+                            Toasts.show({ message: "DMArchiver: saving DM conversation...", id: Toasts.genId(), type: Toasts.Type.MESSAGE });
                             const { savedBytes } = await saveDMAsText(channel.id, targetUserId);
 
                             const msg = `✅ Saved ${savedBytes} bytes to text file`;
-                            showToast(msg, Toasts.Type.SUCCESS);
+                            Toasts.show({ message: msg, id: Toasts.genId(), type: Toasts.Type.SUCCESS });
                             return { content: msg };
                         } catch (error) {
                             return { content: `Failed to save: ${String(error)}` };
                         }
                     }
 
-                    showToast("DMArchiver: saving DM conversation...", Toasts.Type.MESSAGE);
+                    Toasts.show({ message: "DMArchiver: saving DM conversation...", id: Toasts.genId(), type: Toasts.Type.MESSAGE });
                     const { savedBytes } = await saveDMAsText(dmChannel.id, targetUserId);
                     const msg = `✅ Saved ${savedBytes} bytes to text file`;
-                    showToast(msg, Toasts.Type.SUCCESS);
+                    Toasts.show({ message: msg, id: Toasts.genId(), type: Toasts.Type.SUCCESS });
                     return { content: msg };
                 } catch (error) {
                     const msg = `Save failed: ${String(error)}`;
                     console.error(msg, error);
-                    showToast(msg, Toasts.Type.FAILURE);
+                    Toasts.show({ message: msg, id: Toasts.genId(), type: Toasts.Type.FAILURE });
                     return { content: msg };
                 }
             }
@@ -1008,7 +1011,7 @@ export default definePlugin({
             description: "List all DM users you are NOT friends with.",
             execute: async () => {
                 try {
-                    showToast("DMArchiver: scanning friend list...", Toasts.Type.MESSAGE);
+                    Toasts.show({ message: "DMArchiver: scanning friend list...", id: Toasts.genId(), type: Toasts.Type.MESSAGE });
                     const nonFriends = await getNonFriendDMs();
 
                     if (!nonFriends.length) {
@@ -1033,7 +1036,7 @@ export default definePlugin({
                 const newValue = !settings.store.showDeleteOption;
                 settings.store.showDeleteOption = newValue;
                 const status = newValue ? "enabled" : "disabled";
-                showToast(`DMArchiver: delete commands ${status}`, Toasts.Type.MESSAGE);
+                Toasts.show({ message: `DMArchiver: delete commands ${status}`, id: Toasts.genId(), type: Toasts.Type.MESSAGE });
                 return { content: `✅ Delete commands ${status}` };
             }
         },
@@ -1061,7 +1064,7 @@ export default definePlugin({
                 }
 
                 try {
-                    showToast(`DMArchiver: deleting messages for user ${targetUserId}...`, Toasts.Type.MESSAGE);
+                    Toasts.show({ message: `DMArchiver: deleting messages for user ${targetUserId}...`, id: Toasts.genId(), type: Toasts.Type.MESSAGE });
 
                     // Fetch messages from current channel
                     const response = await RestAPI.get({
@@ -1076,7 +1079,7 @@ export default definePlugin({
                         return { content: `ℹ️ No messages found for user ${targetUserId}` };
                     }
 
-                    showToast(`DMArchiver: deleting ${ownMessages.length} own messages...`, Toasts.Type.MESSAGE);
+                    Toasts.show({ message: `DMArchiver: deleting ${ownMessages.length} own messages...`, id: Toasts.genId(), type: Toasts.Type.MESSAGE });
 
                     const batchSize = 20;
                     let deletedCount = 0;
@@ -1096,12 +1099,12 @@ export default definePlugin({
                     }
 
                     const msg = `✅ Deleted ${deletedCount} own messages for user ${targetUserId}`;
-                    showToast(msg, Toasts.Type.SUCCESS);
+                    Toasts.show({ message: msg, id: Toasts.genId(), type: Toasts.Type.SUCCESS });
                     return { content: msg };
 
                 } catch (error) {
                     const errorMsg = String(error);
-                    showToast(`DMArchiver error: ${errorMsg}`, Toasts.Type.FAILURE);
+                    Toasts.show({ message: `DMArchiver error: ${errorMsg}`, id: Toasts.genId(), type: Toasts.Type.FAILURE });
                     return { content: `❌ Delete failed: ${errorMsg}` };
                 }
             }
@@ -1115,17 +1118,17 @@ export default definePlugin({
                 }
 
                 const ctx = (window as any).Discord?.getSelectedChannel();
-                showToast(`DMArchiver: scanning for own messages in this DM...`, Toasts.Type.MESSAGE);
+                Toasts.show({ message: `DMArchiver: scanning for own messages in this DM...`, id: Toasts.genId(), type: Toasts.Type.MESSAGE });
 
                 try {
                     const { deleted, failed } = await deleteUserMessages(ctx.channel.id);
                     const total = deleted + failed;
                     const msg = `✅ Deleted ${deleted}/${total} messages (${failed} failed)`;
-                    showToast(msg, Toasts.Type.SUCCESS);
+                    Toasts.show({ message: msg, id: Toasts.genId(), type: Toasts.Type.SUCCESS });
                     return { content: msg };
                 } catch (error) {
                     const errorMsg = String(error);
-                    showToast(`DMArchiver error: ${errorMsg}`, Toasts.Type.FAILURE);
+                    Toasts.show({ message: `DMArchiver error: ${errorMsg}`, id: Toasts.genId(), type: Toasts.Type.FAILURE });
                     return { content: `❌ Delete failed: ${errorMsg}` };
                 }
             }
