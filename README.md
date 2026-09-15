@@ -1,15 +1,48 @@
-# DMArchiver One-Liner Installer (PowerShell)
+# DMArchiver - Discord DM Media Exporter
 
-Run this in PowerShell:
+A Vencord plugin to export and preserve DM content: media, images, and text history.
 
-```powershell
-irm "https://raw.githubusercontent.com/redbelter/vencord-dm-archiver/master/ONE-LINER.ps1" -OutFile "$env:TEMP\dmArchiver-install.ps1"; & "$env:TEMP\dmArchiver-install.ps1"
-```
+## ⚠️ Important: Vencord Must Be Built From Source
 
-This will:
-- Check if Vencord is installed
-- If not, show instructions to download from vencord.dev/download
-- Detect your Discord version
-- Create the plugin folder if needed
-- Download the plugin files
-- Confirm installation with next steps
+Vencord is a compiled Electron app - it doesn't support runtime plugin loading. You **must build Vencord from source** to use this plugin.
+
+### Quick Start (Build Vencord)
+
+1. Clone Vencord: `git clone https://github.com/Vendicated/Vencord.git`
+2. Copy `dmArchiver` folder to `src/plugins/dmArchiver`
+3. Run `pnpm build` in the Vencord folder
+4. Install the built Vencord to Discord
+
+**See [INSTALL.md](./INSTALL.md) for detailed steps.**
+
+## Installation (After Building)
+
+Once Vencord is built with this plugin:
+
+1. Close Discord completely
+2. Install the built Vencord to Discord
+3. Restart Discord
+4. Go to Settings > Vencord > Plugins > DMArchiver
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `/list-dm-users` | List all DM users (ID + username) for export |
+| `/export-dm-media` | Export all media from current DM |
+| `/save-dm-text` | Save DM text history to file |
+| `/toggle-delete-commands` | Enable/disable delete commands |
+| `/delete-dm-messages` | Delete your own messages (opt-in) |
+| `/delete-all-my-messages` | Delete all your messages in current DM |
+
+## Settings
+
+- `showDeleteOption` - Enable/disable delete-related commands (disabled by default)
+
+## PII Statement
+
+This plugin does NOT collect or store personal data. All data is downloaded to your local machine only.
+
+## About
+
+This combines `dmMediaExporter` and `dmMessageDeleter` into one plugin, focusing on export as the primary feature with optional, opt-in deletion.
