@@ -60,16 +60,6 @@ pnpm build
 
 Go to Settings > Vencord > Plugins and look for "DMArchiver"
 
-## One-Liner (Alternative)
-
-If you just want to test quickly, use this one-liner that downloads the plugin to your plugins folder:
-
-```powershell
-irm "https://raw.githubusercontent.com/redbelter/vencord-dm-archiver/master/ONE-LINER.ps1" -OutFile "$env:TEMP\dmArchiver-install.ps1"; & "$env:TEMP\dmArchiver-install.ps1"
-```
-
-Note: This only works if you build Vencord from source with the plugin included. The downloaded files go to `Roaming\Discord\...\modules\vencord\plugins\dmArchiver\` but Vencord needs to be built with them to actually load.
-
 ## Commands Available
 
 After building, restart Discord and use:
