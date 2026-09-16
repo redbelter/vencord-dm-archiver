@@ -5,7 +5,11 @@ on:
     branches:
       - master
     paths:
-      - 'src/plugins/dmArchiver/**'
+      - 'index.ts'
+      - 'README.md'
+      - 'INSTALL.md'
+      - 'FULL-AUTO-INSTALLER.ps1'
+      - '.github/workflows/release.yml'
     tags:
       - 'v*'
   workflow_dispatch:
