@@ -11,6 +11,18 @@ import definePlugin, { OptionType } from "@utils/types";
 import { EmbedJSON, MessageAttachment, MessageJSON } from "@vencord/discord-types";
 import { ChannelStore, MessageStore, RestAPI, Toasts, UserStore } from "@webpack/common";
 import { waitFor } from "@webpack";
+import {
+    DISCORD_CDN_DOMAINS,
+    URL_IMAGE_EXT_RE,
+    isDiscordCdnUrl,
+    getFileExtensionFromContentType,
+    sanitizeFileName,
+    getFileName,
+    getUrlCandidates,
+    formatSkippedMediaReport,
+    type UrlCandidate,
+    type SkippedMediaEntry,
+} from "./utils";
 
 const Native = VencordNative.pluginHelpers.MinimalPlugin as any;
 let Endpoints: Record<string, any>;
