@@ -8,7 +8,7 @@
 // downloads that bypass browser sandboxing. All methods return safe values;
 // the renderer falls back to fetch / save dialogs when these are unavailable.
 
-import { IpcMainInvokeEvent } from "electron";
+import { BrowserWindow, dialog,IpcMainInvokeEvent } from "electron";
 import { access, mkdir, writeFile as fsWriteFile } from "fs/promises";
 import { join } from "path";
 
@@ -46,5 +46,17 @@ export async function fileExists(_: IpcMainInvokeEvent, folder: string, fileName
         return true;
     } catch {
         return false;
+    }
+}
+
+export async function chooseFolder(event: IpcMainInvokeEvent) {
+    try {
+        const parent = BrowserWindow.fromWebContents(event.sender) ?? undefined;
+        const options = { title: "Choose export folder", properties: ["openDirectory" as const, "createDirectory" as const] };
+        const result = parent ? await dialog.showOpenDialog(parent, options) : await dialog.showOpenDialog(options);
+        if (result.canceled || !result.filePaths.length) return null;
+        return result.filePaths[0];
+    } catch {
+        return null;
     }
 }

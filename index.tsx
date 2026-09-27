@@ -108,7 +108,7 @@ const ArchiveButton: ChatBarButtonFactory = ({ isMainChat, channel }) => {
     return (
         <ChatBarButton
             tooltip="DMArchiver — export this DM"
-            onClick={() => openArchiveDashboard(engineSettings(), settings.store.showDeleteOption)}
+            onClick={() => openArchiveDashboard(engineSettings(), settings.store.showDeleteOption, dmRecipientId(channel))}
         >
             <FolderIcon />
         </ChatBarButton>
@@ -146,9 +146,11 @@ export default definePlugin({
     commands: [
         {
             name: "dm-dashboard",
-            description: "Open the DMArchiver dashboard (select DMs, export media/transcripts, audit).",
-            execute: () => {
-                openArchiveDashboard(engineSettings(), settings.store.showDeleteOption);
+            description: "Open the DMArchiver dashboard (current DM pre-selected, select more if you want).",
+            execute: async (_args, ctx) => {
+                const channelId = resolveCurrentChannelId(ctx);
+                const currentUserId = channelId ? dmRecipientId(ChannelStore.getChannel(channelId)) : undefined;
+                openArchiveDashboard(engineSettings(), settings.store.showDeleteOption, currentUserId);
                 return { content: "Opened DMArchiver dashboard." };
             },
         },

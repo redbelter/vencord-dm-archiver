@@ -9,6 +9,7 @@
 
 import { Button } from "@components/Button";
 import { Logger } from "@utils/Logger";
+import { PluginNative } from "@utils/types";
 import { Checkbox, ConfirmModal, Modal, openModal, Text, TextInput, useEffect, UserStore,useState } from "@webpack/common";
 
 import {
@@ -22,6 +23,8 @@ import {
 
 const log = new Logger("DMArchiver/Dashboard");
 
+const Native = VencordNative.pluginHelpers.DMArchiver as PluginNative<typeof import("./native")> | undefined;
+
 interface Row {
     userId: string;
     channelId: string;
@@ -29,7 +32,7 @@ interface Row {
     isFriend: boolean;
 }
 
-export function openArchiveDashboard(initialSettings: ArchiverSettings, showDeleteOption: boolean) {
+export function openArchiveDashboard(initialSettings: ArchiverSettings, showDeleteOption: boolean, initialUserId?: string) {
     openModal(modalProps => (
         <Modal
             {...modalProps}
@@ -37,24 +40,28 @@ export function openArchiveDashboard(initialSettings: ArchiverSettings, showDele
             title="DMArchiver"
             subtitle="Export DM media & transcripts, audit your DMs"
         >
-            <Dashboard onClose={modalProps.onClose} initialSettings={initialSettings} showDeleteOption={showDeleteOption} />
+            <Dashboard onClose={modalProps.onClose} initialSettings={initialSettings} showDeleteOption={showDeleteOption} initialUserId={initialUserId} />
         </Modal>
     ));
 }
 
-function Dashboard({ onClose, initialSettings, showDeleteOption }: {
+function Dashboard({ onClose, initialSettings, showDeleteOption, initialUserId }: {
     onClose(): void;
     initialSettings: ArchiverSettings;
     showDeleteOption: boolean;
+    initialUserId?: string;
 }) {
     const [rows, setRows] = useState<Row[]>([]);
-    const [selected, setSelected] = useState<Set<string>>(new Set());
+    const [selected, setSelected] = useState<Set<string>>(new Set(initialUserId ? [initialUserId] : []));
     const [filter, setFilter] = useState("");
     const [nonFriendsOnly, setNonFriendsOnly] = useState(false);
     const [busy, setBusy] = useState(true);
     const [status, setStatus] = useState("Loading DM list…");
     const [cfg, setCfg] = useState<ArchiverSettings>({ ...initialSettings });
     const [dots, setDots] = useState(0);
+    // Collapsed-by-default only when opened from a DM (current DM pre-selected).
+    // Manual toggle; selecting rows never changes it (that would hide rows under the cursor).
+    const [collapsed, setCollapsed] = useState(!!initialUserId);
 
     useEffect(() => {
         const t = setInterval(() => setDots(d => (d + 1) % 4), 400);
@@ -74,7 +81,11 @@ function Dashboard({ onClose, initialSettings, showDeleteOption }: {
                 }));
                 list.sort((a, b) => a.username.localeCompare(b.username));
                 setRows(list);
-                setStatus(`${list.length} DM conversations`);
+                if (initialUserId && !perUser.has(initialUserId)) {
+                    setStatus(`${list.length} DM conversations (current DM not in list?)`);
+                } else {
+                    setStatus(`${list.length} DM conversations${initialUserId ? " — current DM pre-selected" : ""}`);
+                }
             } catch (error) {
                 log.error("failed to load DM list", error);
                 setStatus(`Failed to load: ${String(error)}`);
@@ -84,10 +95,13 @@ function Dashboard({ onClose, initialSettings, showDeleteOption }: {
         })();
     }, []);
 
-    const visible = rows.filter(r =>
+    const matchesFilters = (r: Row) =>
         (!nonFriendsOnly || !r.isFriend)
-        && (!filter || r.username.toLowerCase().includes(filter.toLowerCase()) || r.userId.includes(filter)),
-    );
+        && (!filter || r.username.toLowerCase().includes(filter.toLowerCase()) || r.userId.includes(filter));
+
+    // Collapsed: only selected/current DMs listed. Expanded: everything matching filters.
+    const visible = (collapsed ? rows.filter(r => selected.has(r.userId) || r.userId === initialUserId) : rows).filter(matchesFilters);
+    const hiddenCount = rows.length - visible.length;
 
     const toggle = (userId: string) => setSelected(prev => {
         const next = new Set(prev);
@@ -164,11 +178,29 @@ function Dashboard({ onClose, initialSettings, showDeleteOption }: {
             {/* export target + toggles */}
             <div>
                 {sectionLabel("Export destination")}
-                <TextInput
-                    value={cfg.downloadFolder}
-                    onChange={(v: string) => setCfg(c => ({ ...c, downloadFolder: v }))}
-                    placeholder="C:\\Users\\you\\Pictures\\DMExport (empty = save dialog per file)"
-                />
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <div style={{ flex: 1 }}>
+                        <TextInput
+                            value={cfg.downloadFolder}
+                            onChange={(v: string) => setCfg(c => ({ ...c, downloadFolder: v }))}
+                            placeholder="(empty = save dialog per file)"
+                        />
+                    </div>
+                    <Button
+                        variant="secondary"
+                        disabled={busy || !Native}
+                        onClick={async () => {
+                            try {
+                                const folder = await Native?.chooseFolder?.();
+                                if (folder) setCfg(c => ({ ...c, downloadFolder: folder }));
+                            } catch (error) {
+                                log.warn("folder picker failed:", error);
+                            }
+                        }}
+                    >
+                        Browse…
+                    </Button>
+                </div>
             </div>
             <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
                 <Checkbox
@@ -222,6 +254,23 @@ function Dashboard({ onClose, initialSettings, showDeleteOption }: {
             {/* DM list */}
             <div style={{ maxHeight: "40vh", overflowY: "auto", border: "1px solid var(--border-subtle, #333)", borderRadius: 8, padding: 4 }}>
                 {busy && !rows.length && <div style={{ padding: 12, opacity: 0.7 }}>{status}</div>}
+                {!collapsed && rows.length > 0 && (
+                    <div style={{ display: "flex", justifyContent: "flex-end", padding: "2px 8px" }}>
+                        <Button variant="link" size="xs" onClick={() => setCollapsed(true)}>
+                            Collapse to selected ({selected.size})
+                        </Button>
+                    </div>
+                )}
+                {collapsed && (
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 8px", opacity: 0.8 }}>
+                        <Text variant="text-xs/normal">
+                            Showing {visible.length} selected {hiddenCount > 0 ? `· ${hiddenCount} hidden` : ""}
+                        </Text>
+                        <Button variant="secondary" size="xs" disabled={busy} onClick={() => setCollapsed(false)}>
+                            Show all DMs ({rows.length})
+                        </Button>
+                    </div>
+                )}
                 {visible.map(row => (
                     <div key={row.userId} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 8px" }}>
                         <Checkbox value={selected.has(row.userId)} onChange={() => toggle(row.userId)} size={18} disabled={busy} />
