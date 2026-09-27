@@ -32,7 +32,7 @@ interface Row {
     isFriend: boolean;
 }
 
-export function openArchiveDashboard(initialSettings: ArchiverSettings, showDeleteOption: boolean, initialUserId?: string) {
+export function openArchiveDashboard(initialSettings: ArchiverSettings, showDeleteOption: boolean, initialChannelId?: string) {
     openModal(modalProps => (
         <Modal
             {...modalProps}
@@ -40,28 +40,28 @@ export function openArchiveDashboard(initialSettings: ArchiverSettings, showDele
             title="DMArchiver"
             subtitle="Export DM media & transcripts, audit your DMs"
         >
-            <Dashboard onClose={modalProps.onClose} initialSettings={initialSettings} showDeleteOption={showDeleteOption} initialUserId={initialUserId} />
+            <Dashboard onClose={modalProps.onClose} initialSettings={initialSettings} showDeleteOption={showDeleteOption} initialChannelId={initialChannelId} />
         </Modal>
     ));
 }
 
-function Dashboard({ onClose, initialSettings, showDeleteOption, initialUserId }: {
+function Dashboard({ onClose, initialSettings, showDeleteOption, initialChannelId }: {
     onClose(): void;
     initialSettings: ArchiverSettings;
     showDeleteOption: boolean;
-    initialUserId?: string;
+    initialChannelId?: string;
 }) {
     const [rows, setRows] = useState<Row[]>([]);
-    const [selected, setSelected] = useState<Set<string>>(new Set(initialUserId ? [initialUserId] : []));
+    const [selected, setSelected] = useState<Set<string>>(new Set());
     const [filter, setFilter] = useState("");
     const [nonFriendsOnly, setNonFriendsOnly] = useState(false);
     const [busy, setBusy] = useState(true);
     const [status, setStatus] = useState("Loading DM list…");
     const [cfg, setCfg] = useState<ArchiverSettings>({ ...initialSettings });
     const [dots, setDots] = useState(0);
-    // Collapsed-by-default only when opened from a DM (current DM pre-selected).
-    // Manual toggle; selecting rows never changes it (that would hide rows under the cursor).
-    const [collapsed, setCollapsed] = useState(!!initialUserId);
+    // Collapsed starts false (list unknown until loaded); flipped true once the
+    // current-DM channel is matched in the loaded list.
+    const [collapsed, setCollapsed] = useState(false);
 
     useEffect(() => {
         const t = setInterval(() => setDots(d => (d + 1) % 4), 400);
@@ -81,10 +81,21 @@ function Dashboard({ onClose, initialSettings, showDeleteOption, initialUserId }
                 }));
                 list.sort((a, b) => a.username.localeCompare(b.username));
                 setRows(list);
-                if (initialUserId && !perUser.has(initialUserId)) {
-                    setStatus(`${list.length} DM conversations (current DM not in list?)`);
+
+                // Pre-select the current DM by matching channel id against the list
+                // (the chat-bar/slash-context channel object shape varies between
+                // Discord builds, so match on ids we control instead).
+                if (initialChannelId) {
+                    const hit = list.find(r => r.channelId === initialChannelId);
+                    if (hit) {
+                        setSelected(new Set([hit.userId]));
+                        setCollapsed(true);
+                        setStatus(`${list.length} DM conversations — current DM pre-selected`);
+                    } else {
+                        setStatus(`${list.length} DM conversations`);
+                    }
                 } else {
-                    setStatus(`${list.length} DM conversations${initialUserId ? " — current DM pre-selected" : ""}`);
+                    setStatus(`${list.length} DM conversations`);
                 }
             } catch (error) {
                 log.error("failed to load DM list", error);
@@ -99,8 +110,8 @@ function Dashboard({ onClose, initialSettings, showDeleteOption, initialUserId }
         (!nonFriendsOnly || !r.isFriend)
         && (!filter || r.username.toLowerCase().includes(filter.toLowerCase()) || r.userId.includes(filter));
 
-    // Collapsed: only selected/current DMs listed. Expanded: everything matching filters.
-    const visible = (collapsed ? rows.filter(r => selected.has(r.userId) || r.userId === initialUserId) : rows).filter(matchesFilters);
+    // Collapsed: only selected DMs listed. Expanded: everything matching filters.
+    const visible = (collapsed ? rows.filter(r => selected.has(r.userId)) : rows).filter(matchesFilters);
     const hiddenCount = rows.length - visible.length;
 
     const toggle = (userId: string) => setSelected(prev => {
