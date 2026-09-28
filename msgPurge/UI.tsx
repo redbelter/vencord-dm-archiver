@@ -13,7 +13,7 @@ import type { CSSProperties } from "react";
 
 import { getDmSummary,type PurgeConfig, type PurgeEngine, type PurgeScope } from "./engine";
 
-export function openPurgeControl(engine: PurgeEngine, initialScope: PurgeScope, canTargetCurrentChannel: boolean) {
+export function openPurgeControl(engine: PurgeEngine, initialScope: PurgeScope, currentChannelId?: string) {
     openModal(modalProps => (
         <Modal
             {...modalProps}
@@ -25,7 +25,7 @@ export function openPurgeControl(engine: PurgeEngine, initialScope: PurgeScope, 
                 onClose={modalProps.onClose}
                 engine={engine}
                 initialScope={initialScope}
-                canTargetCurrentChannel={canTargetCurrentChannel}
+                currentChannelId={currentChannelId}
             />
         </Modal>
     ));
@@ -45,12 +45,13 @@ const panelStyle: CSSProperties = {
     background: "var(--background-tertiary, rgba(128,128,128,.15))",
 };
 
-function PurgeControl({ engine, onClose, initialScope, canTargetCurrentChannel }: {
+function PurgeControl({ engine, onClose, initialScope, currentChannelId }: {
     engine: PurgeEngine;
     onClose(): void;
     initialScope: PurgeScope;
-    canTargetCurrentChannel: boolean;
+    currentChannelId?: string;
 }) {
+    const canTargetCurrentChannel = Boolean(currentChannelId);
     const [scope, setScope] = useState<PurgeScope>(initialScope);
     const [targetCurrent, setTargetCurrent] = useState(canTargetCurrentChannel);
     const [targetDms, setTargetDms] = useState(false);
@@ -81,6 +82,9 @@ function PurgeControl({ engine, onClose, initialScope, canTargetCurrentChannel }
             includeCurrentChannel: targetCurrent && canTargetCurrentChannel,
             includeDms: targetDms,
             friendsOnly: friendsOnly && targetDms,
+            // captured when the modal opened — the store fallback can return a
+            // guild channel (or "") while browsing DMs, so pass it explicitly
+            currentChannelId,
         };
         if (!config.includeCurrentChannel && !config.includeDms) return;
         engine.start(config);
@@ -170,7 +174,8 @@ function PurgeControl({ engine, onClose, initialScope, canTargetCurrentChannel }
                         onChange={(_, v: boolean) => !running && setTargetDms(v)}
                     >
                         <Text variant="text-sm/normal">
-                            My entire DM list{dmCount !== undefined ? ` (${dmCount} conversation${dmCount === 1 ? "" : "s"})` : " (all private chats)"}
+                            All my DMs — only my own messages
+                            {dmCount !== undefined ? ` (${dmCount} conversation${dmCount === 1 ? "" : "s"})` : " (every private chat)"}
                         </Text>
                     </Checkbox>
                 </div>
@@ -180,7 +185,7 @@ function PurgeControl({ engine, onClose, initialScope, canTargetCurrentChannel }
                         disabled={running || !targetDms}
                         onChange={(_, v: boolean) => !running && setFriendsOnly(v)}
                     >
-                        <Text variant="text-sm/normal">When sweeping DMs, skip people on my friends list</Text>
+                                                <Text variant="text-sm/normal">Skip DMs with friends (only sweep strangers)</Text>
                     </Checkbox>
                 </div>
             </div>

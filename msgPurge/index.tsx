@@ -74,6 +74,25 @@ function engineSettings() {
     };
 }
 
+/**
+ * Resolve the channel the user is looking at. The real store returns "-1"
+ * (string) when nothing is selected — that must never be treated as a target.
+ */
+function resolveCurrentChannelId(ctxChannelId?: string | number): string | undefined {
+    const selected = SelectedChannelStore?.getCurrentlySelectedChannelId?.();
+    const candidates = [
+        ctxChannelId,
+        (selected as any)?.channelId,
+        SelectedChannelStore?.getChannelId?.(null),
+        SelectedChannelStore?.getLastSelectedChannelId?.(),
+    ];
+    for (const c of candidates) {
+        const s = c == null ? "" : String(c);
+        if (s && s !== "-1" && s !== "undefined") return s;
+    }
+    return undefined;
+}
+
 function toast(message: string, type = Toasts.Type.MESSAGE) {
     Toasts.show({ message, id: Toasts.genId(), type });
 }
@@ -137,7 +156,7 @@ const PurgeButton: ChatBarButtonFactory = ({ isMainChat, channel }) => {
             onClick={() => openPurgeControl(
                 engine,
                 settings.store.defaultScope as PurgeScope,
-                Boolean(channel?.id ?? SelectedChannelStore?.getLastSelectedChannelId?.()),
+                resolveCurrentChannelId(channel?.id as string | undefined),
             )}
         >
             <DeleteIcon />
@@ -161,7 +180,9 @@ export default definePlugin({
     settings,
 
     start() {
-        setChannelIdProvider(() => SelectedChannelStore?.getLastSelectedChannelId?.());
+                // getChannelId() returns "-1" when nothing is selected (e.g. Friends
+        // view); null guildId so it returns the active DM channel too
+        setChannelIdProvider(() => resolveCurrentChannelId());
         if (!settings.store.enabled) {
             log.info("installed but disabled — enable 'Master switch' in settings to use");
             return;
@@ -212,8 +233,7 @@ export default definePlugin({
             }
             const scopeArg = (findOption(args, "scope") as string | undefined)?.trim();
             const scope: PurgeScope = scopeArg === "media" ? "media" : scopeArg === "all" ? "all" : settings.store.defaultScope as PurgeScope;
-            const channelId = ctx.channel?.id ?? SelectedChannelStore?.getLastSelectedChannelId?.();
-            openPurgeControl(engine, scope, Boolean(channelId));
+            openPurgeControl(engine, scope, resolveCurrentChannelId(ctx.channel?.id as string | undefined));
         },
     }, {
         name: "msgpurge-here",
@@ -223,7 +243,7 @@ export default definePlugin({
                 toast("MsgPurge is disabled — enable it in Settings → Plugins → MsgPurge.", Toasts.Type.FAILURE);
                 return;
             }
-            const channelId = ctx.channel?.id ?? SelectedChannelStore?.getLastSelectedChannelId?.();
+            const channelId = resolveCurrentChannelId(ctx.channel?.id as string | undefined);
             if (!channelId) {
                 toast("Could not resolve the current channel.", Toasts.Type.FAILURE);
                 return;
