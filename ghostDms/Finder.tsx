@@ -12,6 +12,8 @@ import {
     ChannelRouter,
     ChannelStore,
     Checkbox,
+    GuildMemberStore,
+    GuildStore,
     Modal,
     openModal,
     RestAPI,
@@ -42,6 +44,54 @@ export function snowflakeDate(id: string): string | null {
 }
 
 const SNOWFLAKE_RE = /^\d{15,20}$/;
+
+export interface CachePerson {
+    userId: string;
+    username: string;
+}
+
+/**
+ * Search everything the client has ever *seen* — the local user cache and the
+ * member caches of every server joined — for a name. This is how you find an
+ * old friend who isn't in the DM list: you don't need their snowflake, just a
+ * few letters of their username and a shared server from the past.
+ * Local-only: zero API calls. Returns up to `cap` matches (DM partners are
+ * excluded — the DM list already shows those).
+ */
+export function searchPeopleCache(query: string, excludeUserIds: Set<string>, cap = 50): CachePerson[] {
+    const q = query.trim().toLowerCase();
+    if (q.length < 2) return [];
+    const found = new Map<string, { userId: string; username: string; exact: boolean; }>();
+
+    const consider = (uid: unknown, name: unknown) => {
+        const id = uid == null ? "" : String(uid);
+        const nm = typeof name === "string" ? name : "";
+        if (!id || !nm || excludeUserIds.has(id)) return;
+        const low = nm.toLowerCase();
+        if (!low.includes(q)) return;
+        const exact = low === q || low.startsWith(q);
+        const prev = found.get(id);
+        if (!prev || (!prev.exact && exact)) found.set(id, { userId: id, username: nm, exact });
+    };
+
+    try {
+        const all = UserStore.getUsers?.();
+        if (all) for (const [id, user] of Object.entries(all)) consider(id, (user as any)?.username);
+    } catch { /* cache unavailable */ }
+
+    // every cached guild member across every guild the client knows
+    try {
+        for (const guildId of GuildStore.getGuildIds?.() ?? []) {
+            for (const uid of GuildMemberStore.getMemberIds?.(guildId) ?? [])
+                consider(uid, UserStore.getUser(String(uid))?.username);
+        }
+    } catch { /* store unavailable */ }
+
+    return [...found.values()]
+        .sort((a, b) => Number(b.exact) - Number(a.exact) || a.username.localeCompare(b.username))
+        .slice(0, cap)
+        .map(({ userId, username }) => ({ userId, username }));
+}
 
 /**
  * Ask Discord for the DM channel with this user. If one already exists
@@ -128,25 +178,25 @@ function Finder({ onClose }: { onClose(): void; }) {
     const [search, setSearch] = useState("");
     const [nonFriendsOnly, setNonFriendsOnly] = useState(false);
     const [userId, setUserId] = useState("");
-    const [lookupBusy, setLookupBusy] = useState(false);
+    const [showIdBox, setShowIdBox] = useState(false);
+    const [busyId, setBusyId] = useState(""); // user id currently resolving
     const [lookupError, setLookupError] = useState("");
 
     useEffect(() => {
         listAllDms().then(setRows).catch(() => setRows([]));
     }, []);
 
-    // Open a DM by snowflake ID — works even when the channel is missing from
-    // the DM list entirely. Discord's create-or-get returns the EXISTING
-    // channel (with history) if there was ever a DM; only a never-DM'd user
-    // produces a new empty channel, so we ask before touching the API.
-    const lookupById = async () => {
-        const id = userId.trim();
+    // Open a DM with ANY user id, even one missing from the DM list: Discord's
+    // create-or-get endpoint returns the EXISTING channel (history intact) if a
+    // DM ever existed; only a never-DM'd user yields a fresh empty channel.
+    const openPersonById = async (rawId: string) => {
+        const id = rawId.trim();
         if (!SNOWFLAKE_RE.test(id)) {
             setLookupError("That doesn't look like a Discord user ID (15-20 digits).");
             return;
         }
         setLookupError("");
-        setLookupBusy(true);
+        setBusyId(id);
         try {
             const channelId = await resolveDmByUserId(id);
             ChannelRouter?.transitionToChannel?.(channelId);
@@ -158,7 +208,7 @@ function Finder({ onClose }: { onClose(): void; }) {
                     : `Lookup failed: ${String(error?.message ?? error)}`,
             );
         } finally {
-            setLookupBusy(false);
+            setBusyId("");
         }
     };
 
@@ -176,6 +226,13 @@ function Finder({ onClose }: { onClose(): void; }) {
         (!nonFriendsOnly || !r.isFriend)
         && (!search || r.username.toLowerCase().includes(search.toLowerCase()) || r.userId.includes(search)));
     const hiddenCount = (rows ?? []).filter(r => !r.isFriend).length;
+
+    // people the client has seen (user cache + every guild member cache) that
+    // have no DM channel — searching names here finds old friends whose DM
+    // channel vanished from the list, without needing a snowflake
+    const peopleMatches = (rows !== null && search.trim().length >= 2 && !nonFriendsOnly)
+        ? searchPeopleCache(search, new Set((rows ?? []).map(r => r.userId)))
+        : [];
 
     return (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -198,36 +255,73 @@ function Finder({ onClose }: { onClose(): void; }) {
                 </Checkbox>
             </div>
 
-            <div style={panelStyle}>
-                <Text variant="text-xs/bold">NOT IN THE LIST? OPEN BY USER ID</Text>
-                <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-                    <div style={{ flex: 1 }}>
-                        <TextInput
-                            placeholder="User ID (snowflake), e.g. 183740859087306753"
-                            value={userId}
-                            onChange={(v: string) => setUserId(v)}
-                        />
+            {peopleMatches.length ? (
+                <div style={panelStyle}>
+                    <Text variant="text-xs/bold">
+                        NOT IN YOUR DM LIST — BUT RECOGNIZED FROM SERVERS / CACHE ({peopleMatches.length})
+                    </Text>
+                    <div style={{ maxHeight: 160, overflowY: "auto" as const, marginTop: 6 }}>
+                        {peopleMatches.map(p => (
+                            <div key={p.userId} style={{ display: "flex", alignItems: "center", gap: 8, padding: "2px 4px" }}>
+                                <span style={{ flex: 1 }}>{p.username}</span>
+                                <span style={{ opacity: 0.4, fontSize: 11 }}>{p.userId}</span>
+                                {snowflakeDate(p.userId) ? (
+                                    <Text variant="text-xs/normal" style={{ opacity: 0.6 }}>since {snowflakeDate(p.userId)}</Text>
+                                ) : null}
+                                <Button
+                                    variant="secondary"
+                                    size="xs"
+                                    disabled={busyId === p.userId}
+                                    onClick={() => openPersonById(p.userId)}
+                                >
+                                    {busyId === p.userId ? "opening…" : "Open DM"}
+                                </Button>
+                            </div>
+                        ))}
                     </div>
-                    <Button
-                        variant="primary"
-                        size="xs"
-                        disabled={lookupBusy || !userId.trim()}
-                        onClick={() => lookupById()}
-                    >
-                        {lookupBusy ? "opening…" : "Open DM"}
+                    <Text variant="text-xs/normal" style={{ opacity: 0.7 }}>
+                        "Open DM" restores the original conversation if one ever existed; otherwise it's an empty DM.
+                    </Text>
+                </div>
+            ) : null}
+
+            {showIdBox ? (
+                <div style={panelStyle}>
+                    <div style={{ display: "flex", gap: 8 }}>
+                        <div style={{ flex: 1 }}>
+                            <TextInput
+                                placeholder="User ID (15–20 digit snowflake)"
+                                value={userId}
+                                onChange={(v: string) => setUserId(v)}
+                            />
+                        </div>
+                        <Button
+                            variant="primary"
+                            size="xs"
+                            disabled={busyId !== "" || !userId.trim()}
+                            onClick={() => openPersonById(userId)}
+                        >
+                            {busyId ? "opening…" : "Open DM"}
+                        </Button>
+                    </div>
+                    {SNOWFLAKE_RE.test(userId.trim()) && snowflakeDate(userId.trim()) ? (
+                        <div style={{ marginTop: 4 }}>
+                            <Text variant="text-xs/normal">account created {snowflakeDate(userId.trim())}</Text>
+                        </div>
+                    ) : null}
+                </div>
+            ) : (
+                <div>
+                    <Button variant="link" size="xs" onClick={() => setShowIdBox(true)}>
+                        Have a user ID instead? Open by ID
                     </Button>
                 </div>
-                {SNOWFLAKE_RE.test(userId.trim()) && snowflakeDate(userId.trim()) ? (
-                    <div style={{ marginTop: 4 }}>
-                        <Text variant="text-xs/normal">account created {snowflakeDate(userId.trim())}</Text>
-                    </div>
-                ) : null}
-                {lookupError ? (
-                    <div style={{ marginTop: 4 }}>
-                        <Text variant="text-xs/normal">{lookupError}</Text>
-                    </div>
-                ) : null}
-            </div>
+            )}
+            {lookupError ? (
+                <div>
+                    <Text variant="text-xs/normal">{lookupError}</Text>
+                </div>
+            ) : null}
 
             <div style={{ ...panelStyle, maxHeight: "50vh", overflowY: "auto", padding: 4 }}>
                 {rows !== null && !visible.length ? (
@@ -248,10 +342,10 @@ function Finder({ onClose }: { onClose(): void; }) {
             </div>
 
             <Text variant="text-xs/normal">
-                Opening a listed DM only navigates — nothing is sent or deleted. ID lookup asks
-                Discord for the DM channel: if you ever DM'd that user your history comes back,
-                otherwise you just get an empty DM nobody else can see. Leave by clicking any
-                other conversation.
+                Opening a listed DM only navigates — nothing is sent or deleted. Typing a name also
+                searches everyone Discord has shown you (user cache + all your servers' member
+                lists), so old friends whose DM channel vanished still turn up without knowing
+                their ID. Leave any opened DM by clicking another conversation.
             </Text>
         </div>
     );
