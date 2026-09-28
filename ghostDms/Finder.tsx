@@ -93,6 +93,70 @@ export function searchPeopleCache(query: string, excludeUserIds: Set<string>, ca
         .map(({ userId, username }) => ({ userId, username }));
 }
 
+export interface RosterPerson extends CachePerson {
+    /** name of one guild the search endpoint matched them in */
+    inGuild: string;
+}
+
+export interface RosterSearchResult {
+    persons: RosterPerson[];
+    searched: number;
+    rateLimited: boolean;
+    error: string;
+}
+
+/**
+ * Ask every server the user is in to search its FULL member roster
+ * server-side (`GET /guilds/{id}/members/search`). Unlike the local cache
+ * search this finds people who were never cached by this client — e.g. a
+ * 2016 friend in a big server whose member slice was never loaded.
+ * Sequential + paced; stops early on rate limit or when `stop.stop` flips.
+ */
+export async function searchGuildRosters(
+    query: string,
+    opts: { exclude: Set<string>; paceMs?: number; stop?: { stop: boolean; }; onProgress?: (done: number, total: number) => void; },
+): Promise<RosterSearchResult> {
+    const q = query.trim().toLowerCase();
+    const persons: RosterPerson[] = [];
+    const seen = new Set<string>();
+    const stop = opts.stop ?? { stop: false };
+    const paceMs = opts.paceMs ?? 150;
+    let searched = 0, rateLimited = false;
+
+    let guildIds: string[] = [];
+    try { guildIds = GuildStore.getGuildIds?.() ?? []; } catch { /* no guilds */ }
+
+    for (const guildId of guildIds) {
+        if (stop.stop) break;
+        let guildName = guildId;
+        try { guildName = GuildStore.getGuild?.(guildId)?.name ?? guildId; } catch { /* name unavailable */ }
+        try {
+            const res: any = await RestAPI.get({
+                url: `/guilds/${guildId}/members/search`,
+                query: { query: query.trim(), limit: 10 },
+            });
+            const members: any[] = Array.isArray(res?.body) ? res.body : Array.isArray(res) ? res : [];
+            searched++;
+            for (const m of members) {
+                const user = m?.user ?? m;
+                const id = user?.id == null ? "" : String(user.id);
+                const nm = user?.username ?? user?.global_name ?? "";
+                if (!id || !nm || opts.exclude.has(id) || seen.has(id)) continue;
+                if (q && !nm.toLowerCase().includes(q) && !(m?.nick && String(m.nick).toLowerCase().includes(q))) continue;
+                seen.add(id);
+                persons.push({ userId: id, username: nm, inGuild: guildName });
+            }
+        } catch (e: any) {
+            if (e?.status === 429) { rateLimited = true; break; }
+            // 404/400 on small guilds is normal — skip quietly
+        }
+        opts.onProgress?.(searched, guildIds.length);
+        if (paceMs) await new Promise(r => setTimeout(r, paceMs));
+    }
+
+    return { persons, searched, rateLimited, error: "" };
+}
+
 /**
  * Ask Discord for the DM channel with this user. If one already exists
  * (including DMs hidden from /users/@me/channels), Discord returns THAT
@@ -181,6 +245,11 @@ function Finder({ onClose }: { onClose(): void; }) {
     const [showIdBox, setShowIdBox] = useState(false);
     const [busyId, setBusyId] = useState(""); // user id currently resolving
     const [lookupError, setLookupError] = useState("");
+    const [rosterBusy, setRosterBusy] = useState(false);
+    const [rosterText, setRosterText] = useState("");
+    const [rosterMatches, setRosterMatches] = useState<RosterPerson[]>([]);
+    const [rosterDone, setRosterDone] = useState(false);
+    const stopRoster = useState({ stop: false })[0];
 
     useEffect(() => {
         listAllDms().then(setRows).catch(() => setRows([]));
@@ -209,6 +278,34 @@ function Finder({ onClose }: { onClose(): void; }) {
             );
         } finally {
             setBusyId("");
+        }
+    };
+
+    const deepSearchRosters = async () => {
+        if (search.trim().length < 2) {
+            setRosterText("Type at least 2 letters of their name above first.");
+            return;
+        }
+        setRosterBusy(true);
+        setRosterDone(false);
+        setRosterMatches([]);
+        setRosterText("searching every server you're in…");
+        stopRoster.stop = false;
+        try {
+            const res = await searchGuildRosters(search, {
+                exclude: new Set((rows ?? []).map(r => r.userId)),
+                stop: stopRoster,
+                onProgress: (done, total) => setRosterText(`searching servers ${done}/${total}…`),
+            });
+            setRosterMatches(res.persons);
+            setRosterText(res.rateLimited
+                ? `stopped early at Discord's rate limit — ${res.persons.length} match(es) from ${res.searched} server(s)`
+                : `${res.persons.length} match(es) from ${res.searched} server(s)`);
+        } catch (error: any) {
+            setRosterText(`search failed: ${String(error?.message ?? error)}`);
+        } finally {
+            setRosterDone(true);
+            setRosterBusy(false);
         }
     };
 
@@ -282,6 +379,58 @@ function Finder({ onClose }: { onClose(): void; }) {
                     <Text variant="text-xs/normal" style={{ opacity: 0.7 }}>
                         "Open DM" restores the original conversation if one ever existed; otherwise it's an empty DM.
                     </Text>
+                </div>
+            ) : null}
+
+            {search.trim().length >= 2 ? (
+                <div style={panelStyle}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ flex: 1 }}>
+                            <Text variant="text-xs/bold">DEEP SEARCH: EVERY SERVER MEMBER LIST</Text>
+                            <Text variant="text-xs/normal" style={{ opacity: 0.7 }}>
+                                asks each of your servers to search its FULL roster server-side —
+                                finds people not in your local cache at all
+                            </Text>
+                        </div>
+                        {rosterBusy ? (
+                            <Button variant="secondary" size="xs" onClick={() => { stopRoster.stop = true; }}>
+                                Stop
+                            </Button>
+                        ) : (
+                            <Button variant="primary" size="xs" onClick={() => deepSearchRosters()}>
+                                Search {`"${search.trim()}"`} in all servers
+                            </Button>
+                        )}
+                    </div>
+                    {rosterText ? (
+                        <div style={{ marginTop: 4 }}>
+                            <Text variant="text-xs/normal">{rosterText}</Text>
+                        </div>
+                    ) : null}
+                    {rosterMatches.length ? (
+                        <div style={{ maxHeight: 160, overflowY: "auto" as const, marginTop: 6 }}>
+                            {rosterMatches.map(p => (
+                                <div key={p.userId} style={{ display: "flex", alignItems: "center", gap: 8, padding: "2px 4px" }}>
+                                    <span style={{ flex: 1 }}>{p.username}</span>
+                                    <Text variant="text-xs/normal" style={{ opacity: 0.6 }}>in {p.inGuild}</Text>
+                                    <Button
+                                        variant="secondary"
+                                        size="xs"
+                                        disabled={busyId === p.userId}
+                                        onClick={() => openPersonById(p.userId)}
+                                    >
+                                        {busyId === p.userId ? "opening…" : "Open DM"}
+                                    </Button>
+                                </div>
+                            ))}
+                        </div>
+                    ) : null}
+                    {rosterDone && !rosterMatches.length ? (
+                        <Text variant="text-xs/normal" style={{ opacity: 0.7 }}>
+                            No one on that name in any server roster — the account may be deleted,
+                            or they used a different username.
+                        </Text>
+                    ) : null}
                 </div>
             ) : null}
 
