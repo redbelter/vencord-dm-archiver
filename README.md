@@ -100,7 +100,8 @@ Copy the `ghostDms/` folder into `Vencord/src/userplugins/ghostDms/` and build t
 - 🏷️ Ghost accounts (unfriended/deactivated, missing from the user cache) are still named — the name comes from the recipient embedded in the channel payload
 - ➡️ **Open** routes you into the hidden DM (`ChannelRouter.transitionToChannel`); close it by clicking any other conversation
 - Search by name, "only show hidden (non-friend) DMs" filter, friend/not-friends tags
-- Zero writes: no messages, deletes, or API mutations — verified in tests
+- **Open by user ID** — paste a snowflake (e.g. from an old friend's profile you can no longer reach); Discord's create-or-get endpoint returns your ORIGINAL DM channel with history if one ever existed. The panel shows the account's creation date (decoded from the ID) so you can sanity-check before clicking. If the ID is wrong/refused (deleted or blocked account) you get an honest error and nothing happens
+- Union source: REST DM list **+** the local ChannelStore cache (sometimes holds channels REST omits)
 
 ---
 
