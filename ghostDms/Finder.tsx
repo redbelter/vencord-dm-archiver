@@ -223,6 +223,41 @@ export async function resolveDmByUserId(userId: string): Promise<string> {
     return String(ch.id);
 }
 
+export interface BatchResult {
+    opened: string[]; // channel ids restored (in order)
+    failed: string[]; // user ids Discord refused (deleted/blocked) or errored
+    rateLimited: boolean; // stopped early on Discord's rate limit
+}
+
+/**
+ * Restore DM channels for many users without clicking through one by one.
+ * Hits create-or-get for each (paced), collecting channel ids; a 429 stops
+ * early and says so rather than hammering Discord. Paced serially because
+ * POST /users/@me/channels is rate-limited hard server-side.
+ */
+export async function batchRestoreDms(
+    userIds: string[],
+    opts: { stop: { stop: boolean; }; paceMs?: number; onProgress?: (done: number, total: number) => void; },
+): Promise<BatchResult> {
+    const paceMs = opts.paceMs ?? 750;
+    const opened: string[] = [];
+    const failed: string[] = [];
+    let rateLimited = false;
+
+    for (let i = 0; i < userIds.length; i++) {
+        if (opts.stop.stop) break;
+        try {
+            opened.push(await resolveDmByUserId(userIds[i]));
+        } catch (e: any) {
+            if (e?.status === 429) { rateLimited = true; break; }
+            failed.push(userIds[i]);
+        }
+        opts.onProgress?.(i + 1, userIds.length);
+        if (i < userIds.length - 1 && paceMs) await new Promise(r2 => setTimeout(r2, paceMs));
+    }
+    return { opened, failed, rateLimited };
+}
+
 /**
  * Every DM channel via /users/@me/channels — a superset of the sidebar —
  * unioned with whatever the local ChannelStore cache knows about.
@@ -305,6 +340,11 @@ function Finder({ onClose }: { onClose(): void; }) {
     const [rosterMatches, setRosterMatches] = useState<RosterPerson[]>([]);
     const [rosterDone, setRosterDone] = useState(false);
     const stopRoster = useState({ stop: false })[0];
+    const [selected, setSelected] = useState<Record<string, boolean>>({}); // userId -> picked
+    const [bulkBusy, setBulkBusy] = useState(false);
+    const [bulkText, setBulkText] = useState("");
+    const [lastScan, setLastScan] = useState<PackageScan | null>(null);
+    const stopBulk = useState({ stop: false })[0];
 
     useEffect(() => {
         listAllDms().then(setRows).catch(() => setRows([]));
@@ -361,6 +401,7 @@ function Finder({ onClose }: { onClose(): void; }) {
             for (const fid of scan.friends ?? []) friendIds.add(fid);
             const merged = mergePackageRows(live, scan, friendIds);
             setRows(merged.rows);
+            setLastScan(scan);
             setPkgMsg(`imported ${scan.dms?.length ?? 0} DMs from the package — ${merged.added} conversation(s) Discord's live list no longer shows`
                 + (scan.groupDms ? ` (${scan.groupDms} group DMs skipped)` : ""));
         } catch (error: any) {
@@ -395,6 +436,40 @@ function Finder({ onClose }: { onClose(): void; }) {
         } finally {
             setRosterDone(true);
             setRosterBusy(false);
+        }
+    };
+
+    const selectedIds = Object.keys(selected).filter(k => selected[k]);
+
+    const toggleSelect = (userId: string) => {
+        setSelected(prev => ({ ...prev, [userId]: !prev[userId] }));
+    };
+    const selectMany = (ids: string[], on: boolean) => {
+        setSelected(prev => {
+            const next = { ...prev };
+            for (const id of ids) if (on) next[id] = true; else delete next[id];
+            return next;
+        });
+    };
+
+    const runBulkRestore = async () => {
+        if (!selectedIds.length) return;
+        setBulkBusy(true);
+        setBulkText("starting…");
+        stopBulk.stop = false;
+        try {
+            const res = await batchRestoreDms(selectedIds, {
+                stop: stopBulk,
+                onProgress: (done, total) => setBulkText(`restoring ${done}/${total}…`),
+            });
+            if (res.opened.length) ChannelRouter?.transitionToChannel?.(res.opened[res.opened.length - 1]);
+            setBulkText(
+                `${res.opened.length} restored`
+                + (res.failed.length ? `, ${res.failed.length} refused (deleted/blocked)` : "")
+                + (res.rateLimited ? " — stopped early at Discord's rate limit, select the rest and run again" : ""));
+            selectMany(selectedIds, false);
+        } finally {
+            setBulkBusy(false);
         }
     };
 
@@ -598,12 +673,58 @@ function Finder({ onClose }: { onClose(): void; }) {
                 </div>
             ) : null}
 
+            {rows !== null && visible.length ? (
+                <div style={panelStyle}>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                        <Button
+                            variant="secondary" size="xs" disabled={bulkBusy}
+                            onClick={() => selectMany(visible.filter(r => !r.isFriend).map(r => r.userId), true)}
+                        >
+                            Select all non-friends ({visible.filter(r => !r.isFriend).length})
+                        </Button>
+                        {lastScan ? (
+                            <Button
+                                variant="secondary" size="xs" disabled={bulkBusy}
+                                onClick={() => selectMany(visible.filter(r => r.fromPackage).map(r => r.userId), true)}
+                            >
+                                Select package-only ({visible.filter(r => r.fromPackage).length})
+                            </Button>
+                        ) : null}
+                        <Button variant="link" size="xs" disabled={bulkBusy} onClick={() => selectMany(Object.keys(selected), false)}>
+                            Clear
+                        </Button>
+                        {selectedIds.length ? (
+                            <Button
+                                variant={bulkBusy ? "secondary" : "primary"} size="xs"
+                                onClick={() => (bulkBusy ? (stopBulk.stop = true) : runBulkRestore())}
+                            >
+                                {bulkBusy ? `Stop (${selectedIds.length} picked)` : `Restore ${selectedIds.length} selected DMs`}
+                            </Button>
+                        ) : null}
+                    </div>
+                    <Text variant="text-xs/normal">
+                        "Restore" re-opens the DM channels for every picked person at once (paced so Discord doesn't
+                        rate-limit you), then jumps you to the last one — they're all back in your sidebar afterwards.
+                    </Text>
+                    {bulkText ? (
+                        <div>
+                            <Text variant="text-xs/normal">{bulkText}</Text>
+                        </div>
+                    ) : null}
+                </div>
+            ) : null}
+
             <div style={{ ...panelStyle, maxHeight: "50vh", overflowY: "auto", padding: 4 }}>
                 {rows !== null && !visible.length ? (
                     <div style={{ padding: 12, opacity: 0.7 }}>No DMs match this filter.</div>
                 ) : null}
                 {visible.map(row => (
                     <div key={row.channelId} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 8px" }}>
+                        <Checkbox
+                            value={!!selected[row.userId]}
+                            disabled={bulkBusy}
+                            onChange={() => toggleSelect(row.userId)}
+                        />
                         <span style={{ flex: 1 }}>{row.username}</span>
                         <Text variant="text-xs/normal" style={{ opacity: 0.6 }}>
                             {row.isFriend ? "friend" : "not friends"}
