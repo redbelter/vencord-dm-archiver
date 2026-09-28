@@ -29,6 +29,32 @@ If you have a patched Discord desktop install (`pnpm build && node scripts/runIn
 
 Then: **Settings → Vencord → Plugins → DMArchiver** (search "dm").
 
+---
+
+# MsgPurge (also in this repo: `msgPurge/`)
+
+A **separate Vencord plugin** for rate-limited deletion of **your own** messages — designed to run for hours without babysitting. Copy the `msgPurge/` folder into `Vencord/src/userplugins/msgPurge/` and build the same way.
+
+## Features
+
+- 🧮 **Built-in rate control** — configurable msgs/minute (1–30), fixed rolling window + jitter so you never burst like a bot
+- 🎚️ **Scope: All messages or Only media** — pick between deleting everything you sent or just messages that contain attachments
+- ⏸️ **Pause / resume / stop anytime** — a Stop mid-run saves the exact queue of remaining message IDs
+- 💾 **Resumable across restarts** — the unfinished queue persists to plugin settings; after a Discord restart you get offered "Resume queue" or "Discard"
+- 🚦 **Live status panel** — deleted / failed / scanned counts, msgs/min estimate, queued remainder, target, elapsed time
+- 🛡️ **Own messages only** — the engine filters by your user ID at scan time; peer messages are never queued, let alone deleted
+- 👥 **DM sweep options** — current channel, every DM, and "skip friends" filter
+- ⚡ **429-aware** — on rate-limit responses it cools down (60s+backoff) and retries instead of hammering
+
+## Usage
+
+- **`/msgpurge`** — opens the control panel (option: `scope: all | media`)
+- **`/msgpurge-here`** — immediately starts deleting your messages in the current channel at the configured rate
+- 🗑️ chat-bar button — same control panel, right in the channel
+- Enable it first: **Settings → Vencord → Plugins → MsgPurge** (the "Master switch"), and tune **rate (msgs/min)** and **max retries** there.
+
+> ⚠️ Deletion is permanent and irreversible — this deletes through Discord's own API as your account. Start with one channel and a low rate.
+
 ## Usage
 
 Open the dashboard with **`/dm-dashboard`**, the 📁 button in any DM's chat bar, and:
