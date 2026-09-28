@@ -12,6 +12,21 @@ export const log = new Logger("MsgPurge");
 
 export type PurgeScope = "all" | "media";
 
+export interface PurgeEstimate {
+    /** own messages matching the scope, summed across targets */
+    count: number;
+    /** how many of those targets actually have matching messages */
+    channels: number;
+    /** targets considered */
+    targets: number;
+    /** DMs skipped due to friends-only */
+    skipped: number;
+    cancelled: boolean;
+    ratePerMinute: number;
+    /** null when count is 0 */
+    etaMs: number | null;
+}
+
 export interface PurgeConfig {
     /** "all" = every message you sent; "media" = only messages with attachments */
     scope: PurgeScope;
@@ -367,30 +382,84 @@ export class PurgeEngine {
         return false;
     }
 
+    /** Resolve which channels a config points at (shared by run() and estimate()). */
+    private async buildTargets(config: PurgeConfig): Promise<{ targets: Array<{ id: string; label: string; }>; skipped: number; }> {
+        const targets: Array<{ id: string; label: string; }> = [];
+        let skipped = 0;
+        const currentChannelId = config.currentChannelId ?? getCurrentChannelId();
+        if (config.includeCurrentChannel && currentChannelId) {
+            targets.push({ id: currentChannelId, label: "this channel" });
+        }
+        if (config.includeDms) {
+            const friendIds = config.friendsOnly ? await fetchFriendIds() : new Set<string>();
+            for (const ch of await fetchDmChannels()) {
+                const uid = ch.recipient_ids?.[0] ?? ch.recipients?.[0]?.id;
+                if (!uid) continue;
+                if (config.friendsOnly && friendIds.has(String(uid))) {
+                    skipped++;
+                    continue;
+                }
+                if (String(ch.id) === currentChannelId && config.includeCurrentChannel) continue;
+                targets.push({ id: String(ch.id), label: UserStore.getUser(String(uid))?.username ?? "DM" });
+            }
+        }
+        return { targets, skipped };
+    }
+
+    /**
+     * Count what a purge WOULD delete (and how long it'd take) without deleting
+     * anything. Walks the same scan path as run(); cancels via cancelEstimate().
+     */
+    async estimate(config: PurgeConfig, onProgress?: (done: number, total: number, counted: number) => void): Promise<PurgeEstimate> {
+        if (this.status.running) throw new Error("a purge is running");
+        this.estimating = true;
+        this.cancelEstimateFlag = false;
+        try {
+            const { targets, skipped } = await this.buildTargets(config);
+            let count = 0, channelsWithHits = 0;
+            for (let i = 0; i < targets.length; i++) {
+                if (this.cancelEstimateFlag) return { count, channels: channelsWithHits, targets: targets.length, skipped, cancelled: true, ratePerMinute: this.effectiveRate(), etaMs: null };
+                const own = await this.scanOwnMessages(targets[i].id);
+                const hits = own.filter(m => config.scope !== "media" || m.media).length;
+                count += hits;
+                if (hits) channelsWithHits++;
+                onProgress?.(i + 1, targets.length, count);
+            }
+            const rate = this.effectiveRate();
+            return {
+                count,
+                channels: channelsWithHits,
+                targets: targets.length,
+                skipped,
+                cancelled: false,
+                ratePerMinute: rate,
+                etaMs: count && rate ? (count / rate) * 60_000 : null,
+            };
+        } finally {
+            this.estimating = false;
+        }
+    }
+
+    cancelEstimate(): void {
+        this.cancelEstimateFlag = true;
+    }
+
+    private estimating = false;
+    private cancelEstimateFlag = false;
+
+    effectiveRate(): number {
+        return Math.max(1, Math.min(30, Math.floor(this.getSettings().ratePerMinute)));
+    }
+
     private async run(config: PurgeConfig): Promise<void> {
         const st = this.status;
         try {
-            // Build target list (skipped entirely when resuming a saved queue)
+            // Build target list (skipped entirely when resuming a saved run)
             const targets: Array<{ id: string; label: string; }> = [];
-            const currentChannelId = config.currentChannelId ?? getCurrentChannelId();
-
             if (!config.resumeOnly) {
-                if (config.includeCurrentChannel && currentChannelId) {
-                    targets.push({ id: currentChannelId, label: "this channel" });
-                }
-                if (config.includeDms) {
-                    const friendIds = config.friendsOnly ? await fetchFriendIds() : new Set<string>();
-                    for (const ch of await fetchDmChannels()) {
-                        const uid = ch.recipient_ids?.[0] ?? ch.recipients?.[0]?.id;
-                        if (!uid) continue;
-                        if (config.friendsOnly && friendIds.has(String(uid))) {
-                            st.skipped++;
-                            continue;
-                        }
-                        if (String(ch.id) === currentChannelId && config.includeCurrentChannel) continue;
-                        targets.push({ id: String(ch.id), label: UserStore.getUser(String(uid))?.username ?? "DM" });
-                    }
-                }
+                const built = await this.buildTargets(config);
+                targets.push(...built.targets);
+                st.skipped += built.skipped;
             }
 
             if (!targets.length && !this.pending.size) {

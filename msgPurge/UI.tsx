@@ -11,7 +11,7 @@ import { Button } from "@components/Button";
 import { Checkbox, Modal, openModal, Text, useEffect, useState } from "@webpack/common";
 import type { CSSProperties } from "react";
 
-import { getDmSummary,type PurgeConfig, type PurgeEngine, type PurgeScope } from "./engine";
+import { getDmSummary,type PurgeConfig, type PurgeEngine, type PurgeEstimate, type PurgeScope } from "./engine";
 
 export function openPurgeControl(engine: PurgeEngine, initialScope: PurgeScope, currentChannelId?: string) {
     openModal(modalProps => (
@@ -29,6 +29,16 @@ export function openPurgeControl(engine: PurgeEngine, initialScope: PurgeScope, 
             />
         </Modal>
     ));
+}
+
+function fmtDuration(ms: number): string {
+    const s = Math.max(0, Math.round(ms / 1000));
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m}m`;
+    const h = Math.floor(m / 60);
+    if (h < 48) return `${h}h ${m % 60}m`;
+    return `${Math.floor(h / 24)}d ${h % 24}h`;
 }
 
 function fmtElapsed(ms: number): string {
@@ -58,6 +68,9 @@ function PurgeControl({ engine, onClose, initialScope, currentChannelId }: {
     const [friendsOnly, setFriendsOnly] = useState(false);
     const [, setTick] = useState(0);
     const [dmCount, setDmCount] = useState<number | undefined>(undefined);
+    const [estimating, setEstimating] = useState(false);
+    const [estimate, setEstimate] = useState<PurgeEstimate | null>(null);
+    const [estimateProgress, setEstimateProgress] = useState("");
 
     // refresh the status strip ~1/s while something is happening
     useEffect(() => {
@@ -76,18 +89,32 @@ function PurgeControl({ engine, onClose, initialScope, currentChannelId }: {
     // queue exists but nothing is running → resume/discard banner
     const showSavedQueue = !running && pendingNow > 0;
 
+    const buildConfig = (): PurgeConfig => ({
+        scope,
+        includeCurrentChannel: targetCurrent && canTargetCurrentChannel,
+        includeDms: targetDms,
+        friendsOnly: friendsOnly && targetDms,
+        // captured when the modal opened — the store fallback can return a
+        // guild channel (or "") while browsing DMs, so pass it explicitly
+        currentChannelId,
+    });
+
     const start = () => {
-        const config: PurgeConfig = {
-            scope,
-            includeCurrentChannel: targetCurrent && canTargetCurrentChannel,
-            includeDms: targetDms,
-            friendsOnly: friendsOnly && targetDms,
-            // captured when the modal opened — the store fallback can return a
-            // guild channel (or "") while browsing DMs, so pass it explicitly
-            currentChannelId,
-        };
+        const config = buildConfig();
         if (!config.includeCurrentChannel && !config.includeDms) return;
         engine.start(config);
+    };
+
+    const doEstimate = () => {
+        const config = buildConfig();
+        if (!config.includeCurrentChannel && !config.includeDms) return;
+        setEstimating(true);
+        setEstimate(null);
+        setEstimateProgress("counting…");
+        engine.estimate(config, (done, total, counted) =>
+            setEstimateProgress(`counting ${done}/${total} conversations — ${counted} so far…`))
+            .then(res => { setEstimate(res); setEstimating(false); })
+            .catch(() => { setEstimating(false); setEstimateProgress(""); });
     };
 
     return (
@@ -190,17 +217,58 @@ function PurgeControl({ engine, onClose, initialScope, currentChannelId }: {
                 </div>
             </div>
 
+            {/* ── estimate ───────────────────────────────────────────── */}
+            {estimating || estimate ? (
+                <div style={panelStyle}>
+                    {estimating ? (
+                        <Text variant="text-sm/normal">{estimateProgress || "counting…"}</Text>
+                    ) : estimate ? (
+                        <>
+                            <Text variant="text-sm/bold">
+                                ≈ {estimate.count.toLocaleString()} message{estimate.count === 1 ? "" : "s"} to delete
+                                {estimate.cancelled ? " (count cancelled early — partial)" : ""}
+                            </Text>
+                            <div>
+                                <Text variant="text-sm/normal">
+                                    in {estimate.channels} conversation{estimate.channels === 1 ? "" : "s"}
+                                    {estimate.skipped ? ` · ${estimate.skipped} friend DM${estimate.skipped === 1 ? "" : "s"} skipped` : ""}
+                                </Text>
+                            </div>
+                            {estimate.etaMs !== null ? (
+                                <div>
+                                    <Text variant="text-sm/normal">
+                                        at {estimate.ratePerMinute}/min → about {fmtDuration(estimate.etaMs)}
+                                    </Text>
+                                </div>
+                            ) : (
+                                <div><Text variant="text-sm/normal">Nothing to delete — you sent no {scope === "media" ? "media" : "messages"} in the selected scope.</Text></div>
+                            )}
+                        </>
+                    ) : null}
+                </div>
+            ) : null}
+
             {/* ── action row ─────────────────────────────────────────── */}
             <div style={{ display: "flex", gap: 8 }}>
                 {!running ? (
-                    <Button
-                        variant="dangerPrimary"
-                        size="xs"
-                        disabled={(!targetCurrent && !targetDms) || showSavedQueue}
-                        onClick={start}
-                    >
-                        Start purge
-                    </Button>
+                    <>
+                        <Button
+                            variant="secondary"
+                            size="xs"
+                            disabled={(estimating) || (!targetCurrent && !targetDms) || showSavedQueue}
+                            onClick={estimating ? () => engine.cancelEstimate() : doEstimate}
+                        >
+                            {estimating ? "Cancel count" : "Estimate first"}
+                        </Button>
+                        <Button
+                            variant="dangerPrimary"
+                            size="xs"
+                            disabled={estimating || (!targetCurrent && !targetDms) || showSavedQueue}
+                            onClick={start}
+                        >
+                            Start purge
+                        </Button>
+                    </>
                 ) : (
                     <>
                         {st.paused ? (
