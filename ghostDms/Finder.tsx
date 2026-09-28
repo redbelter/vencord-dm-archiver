@@ -203,7 +203,7 @@ function Finder({ onClose }: { onClose(): void; }) {
                 <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
                     <div style={{ flex: 1 }}>
                         <TextInput
-                            placeholder="User ID (snowflake), e.g. 133760859087306753"
+                            placeholder="User ID (snowflake), e.g. 183740859087306753"
                             value={userId}
                             onChange={(v: string) => setUserId(v)}
                         />
