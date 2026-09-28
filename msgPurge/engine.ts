@@ -326,20 +326,41 @@ export class PurgeEngine {
     /** rate-limiter window width (60s in prod; shrunk only by tests) */
     windowMs = 60_000;
 
+    /**
+     * Classify a delete result against BOTH Discord RestAPI shapes:
+     *  - real Vencord: resolves with a bare body on 2xx, THROWS HTTPResponseError
+     *    (carrying .status) on 4xx/5xx
+     *  - envelope style: { ok, status } — older wrapper / harness
+     * "gone" (404) means the message is already deleted → counts as deleted.
+     */
+    private classifyDelete(response?: any, error?: any): "ok" | "gone" | "ratelimited" | "retry" {
+        const status = error?.status ?? response?.status;
+        if (status === 429) return "ratelimited";
+        if (status === 404) return "gone";
+        if (error) return "retry";
+        if (response == null) return "ok"; // 204 with empty body
+        if (response.ok === true) return "ok";
+        if (typeof status === "number") return status >= 200 && status < 300 ? "ok" : "retry";
+        if (response.ok === false) return "retry";
+        return "ok"; // resolved with a bare body → success
+    }
+
     private async deleteOne(channelId: string, messageId: string): Promise<boolean> {
         const max = Math.max(1, this.getSettings().maxRetries);
         for (let attempt = 1; attempt <= max; attempt++) {
+            let verdict: "ok" | "gone" | "ratelimited" | "retry";
             try {
-                const response = await RestAPI.del({ url: Constants.Endpoints.MESSAGE(channelId, messageId) });
-                if (response?.status === 429) {
-                    this.event("rate limited — cooling down");
-                    await this.sleep(this.rateLimitBackoffMs * attempt);
-                    continue;
-                }
-                if (response?.ok || response?.status === 204 || response?.status === 200) return true;
-                log.warn(`delete attempt ${attempt} failed for ${messageId} (status ${response?.status})`);
-            } catch (error) {
-                log.warn(`delete attempt ${attempt} threw for ${messageId}:`, error);
+                verdict = this.classifyDelete(await RestAPI.del({ url: Constants.Endpoints.MESSAGE(channelId, messageId) }));
+            } catch (error: any) {
+                verdict = this.classifyDelete(undefined, error);
+                if (verdict === "retry") log.warn(`delete attempt ${attempt} threw for ${messageId}: ${error?.message ?? error}`);
+            }
+
+            if (verdict === "ok" || verdict === "gone") return true;
+            if (verdict === "ratelimited") {
+                this.event("rate limited — cooling down");
+                await this.sleep(this.rateLimitBackoffMs * attempt);
+                continue;
             }
             if (attempt < max) await this.sleep(this.retryBackoffMs * attempt);
         }
@@ -466,6 +487,18 @@ async function fetchDmChannels(): Promise<any[]> {
     } catch {
         return [];
     }
+}
+
+/** How much DM surface exists, for the control panel to preview scope size. */
+export async function getDmSummary(): Promise<{ total: number; nonFriends: number; }> {
+    const channels = await fetchDmChannels();
+    const friendIds = await fetchFriendIds();
+    let nonFriends = 0;
+    for (const ch of channels) {
+        const uid = ch.recipient_ids?.[0] ?? ch.recipients?.[0]?.id;
+        if (uid && !friendIds.has(String(uid))) nonFriends++;
+    }
+    return { total: channels.length, nonFriends };
 }
 
 async function fetchFriendIds(): Promise<Set<string>> {

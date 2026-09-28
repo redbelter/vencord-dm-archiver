@@ -11,7 +11,7 @@ import { Button } from "@components/Button";
 import { Checkbox, Modal, openModal, Text, useEffect, useState } from "@webpack/common";
 import type { CSSProperties } from "react";
 
-import { type PurgeConfig, type PurgeEngine, type PurgeScope } from "./engine";
+import { getDmSummary,type PurgeConfig, type PurgeEngine, type PurgeScope } from "./engine";
 
 export function openPurgeControl(engine: PurgeEngine, initialScope: PurgeScope, canTargetCurrentChannel: boolean) {
     openModal(modalProps => (
@@ -54,13 +54,19 @@ function PurgeControl({ engine, onClose, initialScope, canTargetCurrentChannel }
     const [scope, setScope] = useState<PurgeScope>(initialScope);
     const [targetCurrent, setTargetCurrent] = useState(canTargetCurrentChannel);
     const [targetDms, setTargetDms] = useState(false);
-    const [friendsOnly, setFriendsOnly] = useState(true);
+    const [friendsOnly, setFriendsOnly] = useState(false);
     const [, setTick] = useState(0);
+    const [dmCount, setDmCount] = useState<number | undefined>(undefined);
 
     // refresh the status strip ~1/s while something is happening
     useEffect(() => {
         const t = setInterval(() => setTick(x => x + 1), 1000);
         return () => clearInterval(t);
+    }, []);
+
+    // preview how big "all DMs" actually is
+    useEffect(() => {
+        getDmSummary().then(s => setDmCount(s.total)).catch(() => setDmCount(undefined));
     }, []);
 
     const st = engine.status;
@@ -154,7 +160,7 @@ function PurgeControl({ engine, onClose, initialScope, canTargetCurrentChannel }
                         disabled={running || !canTargetCurrentChannel}
                         onChange={(_, v: boolean) => !running && setTargetCurrent(v)}
                     >
-                        <Text variant="text-sm/normal">This channel{canTargetCurrentChannel ? "" : " (open a channel first)"}</Text>
+                        <Text variant="text-sm/normal">Only this conversation{canTargetCurrentChannel ? "" : " (open one first)"}</Text>
                     </Checkbox>
                 </div>
                 <div>
@@ -163,7 +169,9 @@ function PurgeControl({ engine, onClose, initialScope, canTargetCurrentChannel }
                         disabled={running}
                         onChange={(_, v: boolean) => !running && setTargetDms(v)}
                     >
-                        <Text variant="text-sm/normal">Every DM conversation</Text>
+                        <Text variant="text-sm/normal">
+                            My entire DM list{dmCount !== undefined ? ` (${dmCount} conversation${dmCount === 1 ? "" : "s"})` : " (all private chats)"}
+                        </Text>
                     </Checkbox>
                 </div>
                 <div>
@@ -172,7 +180,7 @@ function PurgeControl({ engine, onClose, initialScope, canTargetCurrentChannel }
                         disabled={running || !targetDms}
                         onChange={(_, v: boolean) => !running && setFriendsOnly(v)}
                     >
-                        <Text variant="text-sm/normal">In DMs: skip friends</Text>
+                        <Text variant="text-sm/normal">When sweeping DMs, skip people on my friends list</Text>
                     </Checkbox>
                 </div>
             </div>
