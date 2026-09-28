@@ -26,11 +26,63 @@ import {
 } from "@webpack/common";
 import type { CSSProperties } from "react";
 
+import type { PackageScan } from "./native";
+
+// native (main-process) bridge; may be unavailable on web builds — the
+// package-import UI hides itself when it is.
+const Native = (typeof VencordNative !== "undefined" ? VencordNative : undefined)?.pluginHelpers?.GhostDms as
+    | { scanPackage(path: string): Promise<PackageScan>; chooseFolder(): Promise<{ path: string | null; } | string | null>; }
+    | undefined;
+
+async function fetchLiveFriendIds(): Promise<Set<string>> {
+    try {
+        const relRes: any = await RestAPI.get({ url: "/users/@me/relationships" });
+        return new Set<string>(
+            (Array.isArray(relRes?.body) ? relRes.body : [])
+                .filter((r: any) => r.type === 1)
+                .map((r: any) => String(r.id)),
+        );
+    } catch { return new Set<string>(); }
+}
+
 export interface GhostDmRow {
     channelId: string;
     userId: string;
     username: string;
     isFriend: boolean;
+    /** true when this row only exists in an imported data package */
+    fromPackage?: boolean;
+}
+
+/**
+ * Merge a scanned data-package DM list into live rows. Package-only channels
+ * are kept as extra rows (flagged) — those are DMs Discord's live API no
+ * longer lists (old hidden conversations) — and get names resolved from the
+ * package's member dumps / live UserStore. Returns the merged rows plus how
+ * many rows came only from the package.
+ */
+export function mergePackageRows(live: GhostDmRow[], scan: PackageScan, friendIds: Set<string>): { rows: GhostDmRow[]; added: number; } {
+    const rows = [...live];
+    const byChannel = new Set(live.map(r => r.channelId));
+    let added = 0;
+    for (const dm of scan.dms ?? []) {
+        if (byChannel.has(dm.channelId)) continue;
+        byChannel.add(dm.channelId);
+        let username = scan.names?.[dm.recipientId];
+        if (!username) {
+            try { username = UserStore.getUser(dm.recipientId)?.username; } catch { /* cache unavailable */ }
+        }
+        rows.push({
+            channelId: dm.channelId,
+            userId: dm.recipientId,
+            username: username ?? `user ${dm.recipientId}`,
+            isFriend: friendIds.has(dm.recipientId),
+            fromPackage: true,
+        });
+        added++;
+    }
+    rows.sort((a, b) => Number(a.isFriend) - Number(b.isFriend) || a.username.localeCompare(b.username));
+    return { rows, added };
 }
 
 /** Account creation date from a snowflake id (Discord epoch 2015-01-01). */
@@ -245,6 +297,9 @@ function Finder({ onClose }: { onClose(): void; }) {
     const [showIdBox, setShowIdBox] = useState(false);
     const [busyId, setBusyId] = useState(""); // user id currently resolving
     const [lookupError, setLookupError] = useState("");
+    const [pkgPath, setPkgPath] = useState("");
+    const [pkgBusy, setPkgBusy] = useState(false);
+    const [pkgMsg, setPkgMsg] = useState("");
     const [rosterBusy, setRosterBusy] = useState(false);
     const [rosterText, setRosterText] = useState("");
     const [rosterMatches, setRosterMatches] = useState<RosterPerson[]>([]);
@@ -281,6 +336,40 @@ function Finder({ onClose }: { onClose(): void; }) {
         }
     };
 
+    const importPackage = async (usePicker = false) => {
+        if (!Native) return;
+        setPkgBusy(true);
+        setPkgMsg("");
+        try {
+            let path = pkgPath.trim();
+            if (usePicker) {
+                const picked: any = await Native.chooseFolder();
+                const chosen = typeof picked === "string" ? picked : picked?.path;
+                if (!chosen) { setPkgBusy(false); return; }
+                setPkgPath(chosen);
+                path = chosen;
+            }
+            const scan = await Native.scanPackage(path);
+            if (!scan.ok) {
+                setPkgMsg(`❌ ${scan.error}`);
+                return;
+            }
+            const live = rows ?? await listAllDms();
+            // friend tag = live relationships ∪ package snapshot (an export from
+            // last year still knows who you were friends with then)
+            const friendIds = await fetchLiveFriendIds();
+            for (const fid of scan.friends ?? []) friendIds.add(fid);
+            const merged = mergePackageRows(live, scan, friendIds);
+            setRows(merged.rows);
+            setPkgMsg(`imported ${scan.dms?.length ?? 0} DMs from the package — ${merged.added} conversation(s) Discord's live list no longer shows`
+                + (scan.groupDms ? ` (${scan.groupDms} group DMs skipped)` : ""));
+        } catch (error: any) {
+            setPkgMsg(`❌ ${String(error?.message ?? error)}`);
+        } finally {
+            setPkgBusy(false);
+        }
+    };
+
     const deepSearchRosters = async () => {
         if (search.trim().length < 2) {
             setRosterText("Type at least 2 letters of their name above first.");
@@ -310,6 +399,12 @@ function Finder({ onClose }: { onClose(): void; }) {
     };
 
     const openDm = (row: GhostDmRow) => {
+        // Package-only channels were never loaded by the client — ask Discord
+        // for the channel via create-or-get (returns the ORIGINAL one).
+        if (row.fromPackage) {
+            openPersonById(row.userId);
+            return;
+        }
         // the channel exists even when the sidebar hides it — jump straight to it
         try {
             ChannelRouter?.transitionToChannel?.(row.channelId);
@@ -379,6 +474,37 @@ function Finder({ onClose }: { onClose(): void; }) {
                     <Text variant="text-xs/normal" style={{ opacity: 0.7 }}>
                         "Open DM" restores the original conversation if one ever existed; otherwise it's an empty DM.
                     </Text>
+                </div>
+            ) : null}
+
+            {Native ? (
+                <div style={panelStyle}>
+                    <Text variant="text-xs/bold">IMPORT FROM DISCORD DATA PACKAGE</Text>
+                    <Text variant="text-xs/normal" style={{ opacity: 0.7 }}>
+                        Point at an unzipped "Request all my Data" package (the folder with Messages/ +
+                        Account/). Its DM list is complete — it finds every conversation you've ever had,
+                        even ones Discord's live list hides.
+                    </Text>
+                    <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+                        <div style={{ flex: 1 }}>
+                            <TextInput
+                                placeholder="C:\Users\you\Desktop\package"
+                                value={pkgPath}
+                                onChange={(v: string) => setPkgPath(v)}
+                            />
+                        </div>
+                        <Button variant="secondary" size="xs" disabled={pkgBusy} onClick={() => importPackage(true)}>
+                            Browse…
+                        </Button>
+                        <Button variant="primary" size="xs" disabled={pkgBusy || !pkgPath.trim()} onClick={() => importPackage(false)}>
+                            {pkgBusy ? "reading…" : "Import"}
+                        </Button>
+                    </div>
+                    {pkgMsg ? (
+                        <div style={{ marginTop: 4 }}>
+                            <Text variant="text-xs/normal">{pkgMsg}</Text>
+                        </div>
+                    ) : null}
                 </div>
             ) : null}
 
@@ -481,6 +607,7 @@ function Finder({ onClose }: { onClose(): void; }) {
                         <span style={{ flex: 1 }}>{row.username}</span>
                         <Text variant="text-xs/normal" style={{ opacity: 0.6 }}>
                             {row.isFriend ? "friend" : "not friends"}
+                            {row.fromPackage ? " · package only" : ""}
                         </Text>
                         <span style={{ opacity: 0.4, fontSize: 11 }}>{row.userId}</span>
                         <Button variant="secondary" size="xs" onClick={() => openDm(row)}>

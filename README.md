@@ -102,8 +102,9 @@ Copy the `ghostDms/` folder into `Vencord/src/userplugins/ghostDms/` and build t
 - Search by name, "only show hidden (non-friend) DMs" filter, friend/not-friends tags
 - 🔦 **Name search beyond the DM list** — typing a name also searches everyone Discord has ever shown *you* (local user cache + member lists of every server you've joined). Old friends whose DM channel vanished from the list show up in a "recognized from servers / cache" panel with their account's creation date — click **Open DM** and Discord's create-or-get endpoint restores your ORIGINAL channel with history (an empty DM if you never actually DM'd them)
 - 🔍 **Deep search: every server member list** — for people not in your local cache *at all*, GhostDms asks every server you're in to search its full roster server-side (`GET /guilds/{id}/members/search`), sequentially and paced so you never trip Discord's rate limits; stop button available, rate-limit stops are reported honestly. Matches come with "in &lt;server name&gt;" and a one-click **Open DM**
+- 📦 **Import from your Discord data package** — in Discord, *Settings → Privacy & Safety → Request all my Data*, unzip the result, then point the import at the extracted folder. It reads `Messages/<id>/channel.json` and enumerates **every DM you have ever had** — the full history, including DM channels the live API no longer returns. Names resolve from the package itself (relationships → channel index → member dumps); friend tags merge live + export-time relationships; group DMs are counted and skipped (they're not openable by recipient id). One-click **Open** on a package-only row restores the channel via create-or-get. Read-only — it never writes to the package.
 - **Open by user ID** fallback (behind a link) if you already know the snowflake
-- Union source: REST DM list **+** the local ChannelStore cache (sometimes holds channels REST omits)
+- Union source: REST DM list **+** the local ChannelStore cache (sometimes holds channels REST omits) **+** your imported data package
 
 ---
 
