@@ -8,10 +8,10 @@
 // and pause / resume / stop for long-running deletions.
 
 import { Button } from "@components/Button";
-import { Checkbox, Modal, openModal, Text, useEffect, useState } from "@webpack/common";
+import { ChannelRouter, Checkbox, Modal, openModal, Text, TextInput, useEffect, useState } from "@webpack/common";
 import type { CSSProperties } from "react";
 
-import { getDmSummary,type PurgeConfig, type PurgeEngine, type PurgeEstimate, type PurgeScope } from "./engine";
+import { type DmRow, getDmSummary, listDms, type PurgeConfig, type PurgeEngine, type PurgeEstimate, type PurgeScope } from "./engine";
 
 export function openPurgeControl(engine: PurgeEngine, initialScope: PurgeScope, currentChannelId?: string) {
     openModal(modalProps => (
@@ -71,6 +71,11 @@ function PurgeControl({ engine, onClose, initialScope, currentChannelId }: {
     const [estimating, setEstimating] = useState(false);
     const [estimate, setEstimate] = useState<PurgeEstimate | null>(null);
     const [estimateProgress, setEstimateProgress] = useState("");
+    // DM picker: loaded lazily the first time it's expanded
+    const [showPicker, setShowPicker] = useState(false);
+    const [dmList, setDmList] = useState<DmRow[] | null>(null);
+    const [selected, setSelected] = useState<Set<string>>(new Set());
+    const [search, setSearch] = useState("");
 
     // refresh the status strip ~1/s while something is happening
     useEffect(() => {
@@ -83,16 +88,34 @@ function PurgeControl({ engine, onClose, initialScope, currentChannelId }: {
         getDmSummary().then(s => setDmCount(s.total)).catch(() => setDmCount(undefined));
     }, []);
 
+    // load the DM picker list the first time it's opened
+    useEffect(() => {
+        if (showPicker && dmList === null) {
+            listDms().then(rows => setDmList(rows)).catch(() => setDmList([]));
+        }
+    }, [showPicker]);
+
     const st = engine.status;
     const { running } = st;
     const pendingNow = engine.getPendingCount();
     // queue exists but nothing is running → resume/discard banner
     const showSavedQueue = !running && pendingNow > 0;
 
+    const toggleDm = (channelId: string) =>
+        setSelected(prev => {
+            const next = new Set(prev);
+            if (next.has(channelId)) next.delete(channelId);
+            else next.add(channelId);
+            return next;
+        });
+
     const buildConfig = (): PurgeConfig => ({
         scope,
         includeCurrentChannel: targetCurrent && canTargetCurrentChannel,
-        includeDms: targetDms,
+        // picker mode: explicit list wins over the full sweep checkbox, but an
+        // explicit "All my DMs" check (later) overrides stale selections
+        includeDms: targetDms || selected.size > 0,
+        selectedDmIds: !targetDms && selected.size > 0 ? [...selected] : undefined,
         friendsOnly: friendsOnly && targetDms,
         // captured when the modal opened — the store fallback can return a
         // guild channel (or "") while browsing DMs, so pass it explicitly
@@ -215,6 +238,79 @@ function PurgeControl({ engine, onClose, initialScope, currentChannelId }: {
                                                 <Text variant="text-sm/normal">Skip DMs with friends (only sweep strangers)</Text>
                     </Checkbox>
                 </div>
+
+                {/* ── DM picker: choose specific people (incl. non-friends you can't open) ── */}
+                <div style={{ marginTop: 8 }}>
+                    <Button
+                        variant="secondary"
+                        size="xs"
+                        disabled={running || targetDms}
+                        onClick={() => setShowPicker(v => !v)}
+                    >
+                        {showPicker ? "Hide DM list" : "Pick specific DMs…"}
+                        {selected.size ? ` (${selected.size} selected)` : ""}
+                    </Button>
+                </div>
+                {showPicker && !targetDms ? (
+                    <div style={{ ...panelStyle, maxHeight: 240, overflowY: "auto" as const }}>
+                        {dmList === null ? (
+                            <Text variant="text-sm/normal">loading DM list…</Text>
+                        ) : dmList.length === 0 ? (
+                            <Text variant="text-sm/normal">No DM channels found.</Text>
+                        ) : (
+                            <>
+                                <TextInput
+                                    placeholder="Search by name…"
+                                    value={search}
+                                    onChange={(v: string) => setSearch(v)}
+                                />
+                                <div style={{ display: "flex", gap: 6, margin: "6px 0" }}>
+                                    <Button variant="secondary" size="xs"
+                                        onClick={() => setSelected(new Set(dmList.filter(r => !r.isFriend).map(r => r.channelId)))}>
+                                        All non-friends
+                                    </Button>
+                                    <Button variant="secondary" size="xs"
+                                        onClick={() => setSelected(new Set(dmList.filter(r => r.isFriend).map(r => r.channelId)))}>
+                                        All friends
+                                    </Button>
+                                    <Button variant="secondary" size="xs" onClick={() => setSelected(new Set())}>
+                                        Clear
+                                    </Button>
+                                </div>
+                                {dmList
+                                    .filter(r => !search || r.username.toLowerCase().includes(search.toLowerCase()))
+                                    .map(r => (
+                                        <div key={r.channelId} style={{ display: "flex", alignItems: "center" }}>
+                                            <Checkbox
+                                                value={selected.has(r.channelId)}
+                                                onChange={() => toggleDm(r.channelId)}
+                                            >
+                                                <Text variant="text-sm/normal">
+                                                    {r.username}
+                                                    <Text variant="text-xs/normal" style={{ color: "var(--text-muted, inherit)" }}>
+                                                        {r.isFriend ? " · friend" : " · not friends"}
+                                                    </Text>
+                                                </Text>
+                                            </Checkbox>
+                                            <Button
+                                                variant="secondary"
+                                                size="xs"
+                                                style={{ marginLeft: "auto" }}
+                                                onClick={() => {
+                                                    try {
+                                                        ChannelRouter?.transitionToChannel?.(r.channelId);
+                                                        onClose();
+                                                    } catch { /* router unavailable */ }
+                                                }}
+                                            >
+                                                Open
+                                            </Button>
+                                        </div>
+                                    ))}
+                            </>
+                        )}
+                    </div>
+                ) : null}
             </div>
 
             {/* ── estimate ───────────────────────────────────────────── */}
@@ -255,7 +351,7 @@ function PurgeControl({ engine, onClose, initialScope, currentChannelId }: {
                         <Button
                             variant="secondary"
                             size="xs"
-                            disabled={(estimating) || (!targetCurrent && !targetDms) || showSavedQueue}
+                            disabled={estimating || (!targetCurrent && !targetDms && selected.size === 0) || showSavedQueue}
                             onClick={estimating ? () => engine.cancelEstimate() : doEstimate}
                         >
                             {estimating ? "Cancel count" : "Estimate first"}
@@ -263,7 +359,7 @@ function PurgeControl({ engine, onClose, initialScope, currentChannelId }: {
                         <Button
                             variant="dangerPrimary"
                             size="xs"
-                            disabled={estimating || (!targetCurrent && !targetDms) || showSavedQueue}
+                            disabled={estimating || (!targetCurrent && !targetDms && selected.size === 0) || showSavedQueue}
                             onClick={start}
                         >
                             Start purge

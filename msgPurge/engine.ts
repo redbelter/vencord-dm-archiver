@@ -34,6 +34,8 @@ export interface PurgeConfig {
     includeCurrentChannel: boolean;
     /** additionally sweep your messages from every DM channel */
     includeDms: boolean;
+    /** explicit DM channel ids (picker mode); when set, ONLY these DMs are targeted */
+    selectedDmIds?: string[];
     /** when true, only delete DM messages sent to non-friends */
     friendsOnly: boolean;
     /** explicit "current channel" (e.g. slash-command context) instead of store lookup */
@@ -390,7 +392,16 @@ export class PurgeEngine {
         if (config.includeCurrentChannel && currentChannelId) {
             targets.push({ id: currentChannelId, label: "this channel" });
         }
-        if (config.includeDms) {
+        const picked = config.selectedDmIds?.filter(Boolean) ?? [];
+        if (picked.length) {
+            // explicit picker mode: exactly these DMs, no friend filter
+            const want = new Set(picked.map(String));
+            for (const row of await listDms()) {
+                if (!want.has(row.channelId)) continue;
+                if (row.channelId === currentChannelId && config.includeCurrentChannel) continue;
+                targets.push({ id: row.channelId, label: row.username });
+            }
+        } else if (config.includeDms) {
             const friendIds = config.friendsOnly ? await fetchFriendIds() : new Set<string>();
             for (const ch of await fetchDmChannels()) {
                 const uid = ch.recipient_ids?.[0] ?? ch.recipients?.[0]?.id;
@@ -559,6 +570,36 @@ async function fetchDmChannels(): Promise<any[]> {
 }
 
 /** How much DM surface exists, for the control panel to preview scope size. */
+export interface DmRow {
+    channelId: string;
+    userId: string;
+    username: string;
+    isFriend: boolean;
+}
+
+/** Every DM channel with its recipient, friend status and best-known username. */
+export async function listDms(): Promise<DmRow[]> {
+    const channels = await fetchDmChannels();
+    const friendIds = await fetchFriendIds();
+    const rows: DmRow[] = [];
+    for (const ch of channels) {
+        const uid = String(ch.recipient_ids?.[0] ?? ch.recipients?.[0]?.id ?? "");
+        if (!uid) continue;
+        // the channel payload embeds the recipient — authoritative for
+        // unfriended / long-gone accounts missing from UserStore
+        const user = ch.recipients?.[0] ?? UserStore.getUser(uid);
+        rows.push({
+            channelId: String(ch.id),
+            userId: uid,
+            // recipient object is embedded in the channel payload — names still
+            // resolve for unfriended / long-gone accounts missing from UserStore
+            username: user?.username ?? user?.global_name ?? `user ${uid}`,
+            isFriend: friendIds.has(uid),
+        });
+    }
+    return rows;
+}
+
 export async function getDmSummary(): Promise<{ total: number; nonFriends: number; }> {
     const channels = await fetchDmChannels();
     const friendIds = await fetchFriendIds();

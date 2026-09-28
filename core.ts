@@ -214,6 +214,21 @@ export function dmRecipientId(channel: any): string | undefined {
 }
 
 /** userId -> channelId, merging the REST DM list with whatever the store knows */
+/**
+ * userId -> best-known username, taken from the recipient object embedded in
+ * the DM channel payload. Works for unfriended / deleted accounts that are no
+ * longer in UserStore.
+ */
+export async function collectDmNames(): Promise<Map<string, string>> {
+    const names = new Map<string, string>();
+    for (const ch of await fetchAllDmChannels()) {
+        const uid = dmRecipientId(ch);
+        const name = ch.recipients?.[0]?.username ?? ch.recipients?.[0]?.global_name;
+        if (uid && name) names.set(uid, name);
+    }
+    return names;
+}
+
 export async function collectDmUserChannels(): Promise<Map<string, string>> {
     const perUser = new Map<string, string>();
     for (const ch of await fetchAllDmChannels()) {

@@ -14,6 +14,7 @@ import { Checkbox, ConfirmModal, Modal, openModal, Text, TextInput, useEffect, U
 
 import {
     type ArchiverSettings,
+    collectDmNames,
     collectDmUserChannels,
     deleteUserMessages,
     exportForUsers,
@@ -71,12 +72,15 @@ function Dashboard({ onClose, initialSettings, showDeleteOption, initialChannelI
     useEffect(() => {
         (async () => {
             try {
-                const perUser = await collectDmUserChannels();
-                const friendIds = await getFriendIds();
+                const [perUser, friendIds, names] = await Promise.all([
+                    collectDmUserChannels(),
+                    getFriendIds(),
+                    collectDmNames(),
+                ]);
                 const list: Row[] = [...perUser.entries()].map(([userId, channelId]) => ({
                     userId,
                     channelId,
-                    username: UserStore.getUser(userId)?.username ?? userId,
+                    username: UserStore.getUser(userId)?.username ?? names.get(userId) ?? userId,
                     isFriend: friendIds.has(userId),
                 }));
                 list.sort((a, b) => a.username.localeCompare(b.username));

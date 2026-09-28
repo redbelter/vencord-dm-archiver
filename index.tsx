@@ -15,6 +15,7 @@ import { ChannelStore, SelectedChannelStore, Toasts, UserStore } from "@webpack/
 import {
     applyQuestHiding,
     type ArchiverSettings,
+    collectDmNames,
     collectDmUserChannels,
     deleteUserMessages,
     dmRecipientId,
@@ -157,12 +158,12 @@ export default definePlugin({
             name: "list-dm-users",
             description: "List all DM users available for export (username + ID).",
             execute: async () => {
-                const perUser = await collectDmUserChannels();
+                const [perUser, names] = await Promise.all([collectDmUserChannels(), collectDmNames()]);
                 if (!perUser.size) return { content: "No DM users found." };
 
                 const lines = [...perUser.keys()].map((id, i) => {
-                    const u = UserStore.getUser(id);
-                    return `${i + 1}. ${u?.username ?? "Unknown"} (${id})`;
+                    const name = UserStore.getUser(id)?.username ?? names.get(id);
+                    return `${i + 1}. ${name ?? "Unknown"} (${id})`;
                 });
                 return { content: `**DM Users (${perUser.size}):**\n${lines.join("\n")}` };
             },
