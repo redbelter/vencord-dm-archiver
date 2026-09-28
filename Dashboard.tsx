@@ -10,7 +10,7 @@
 import { Button } from "@components/Button";
 import { Logger } from "@utils/Logger";
 import { PluginNative } from "@utils/types";
-import { Checkbox, ConfirmModal, Modal, openModal, Text, TextInput, useEffect, UserStore,useState } from "@webpack/common";
+import { ChannelRouter, Checkbox, ConfirmModal, Modal, openModal, Text, TextInput, Toasts, useEffect, UserStore,useState } from "@webpack/common";
 
 import {
     type ArchiverSettings,
@@ -162,6 +162,17 @@ function Dashboard({ onClose, initialSettings, showDeleteOption, initialChannelI
         setStatus(`✅ Text done — ${done} transcripts`);
     });
 
+    const openDm = (row: Row) => {
+        // ghost DMs (non-friend, never opened) aren't in the sidebar, but the
+        // channel still exists — the router can navigate straight to it
+        try {
+            ChannelRouter?.transitionToChannel?.(row.channelId);
+            onClose();
+        } catch {
+            Toasts.show({ message: "Could not open that DM.", id: Toasts.genId(), type: Toasts.Type.FAILURE });
+        }
+    };
+
     const deleteOwn = (row: Row) => {
         openModal(confirmProps => (
             <ConfirmModal
@@ -292,6 +303,13 @@ function Dashboard({ onClose, initialSettings, showDeleteOption, initialChannelI
                         <span style={{ flex: 1 }}>{row.username}</span>
                         {!row.isFriend && <Text variant="text-xs/normal" style={{ opacity: 0.6 }}>not friends</Text>}
                         <span style={{ opacity: 0.4, fontSize: 11 }}>{row.userId}</span>
+                        <Button
+                            variant="secondary"
+                            size="xs"
+                            onClick={() => openDm(row)}
+                        >
+                            Open
+                        </Button>
                         {showDeleteOption && (
                             <Button variant="dangerSecondary" size="xs" disabled={busy} onClick={() => deleteOwn(row)}>
                                 delete mine

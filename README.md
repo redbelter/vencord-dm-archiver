@@ -90,6 +90,20 @@ Open the dashboard with **`/dm-dashboard`**, the 📁 button in any DM's chat ba
 | `showDeleteOption` | ❌ | Unlocks deletion commands + dashboard delete buttons |
 | `showChatBarEntry` | ✅ | Folder button in DM chat bars |
 
+# GhostDms (also in this repo: `ghostDms/`)
+
+A **third, read-only plugin**: a chat-bar button (and `/ghost-dms`) that lists **every DM you have ever had** — including conversations Discord hides from your sidebar (people who unfriended you, accounts you can no longer open) — and jumps straight to any of them with one click. Nothing is sent or deleted; it just navigates.
+
+Copy the `ghostDms/` folder into `Vencord/src/userplugins/ghostDms/` and build the same way as above.
+
+- 👻 Discord's sidebar hides DMs with non-friends; the `/users/@me/channels` API returns **all** of them — this plugin shows the full list
+- 🏷️ Ghost accounts (unfriended/deactivated, missing from the user cache) are still named — the name comes from the recipient embedded in the channel payload
+- ➡️ **Open** routes you into the hidden DM (`ChannelRouter.transitionToChannel`); close it by clicking any other conversation
+- Search by name, "only show hidden (non-friend) DMs" filter, friend/not-friends tags
+- Zero writes: no messages, deletes, or API mutations — verified in tests
+
+---
+
 ## Notes & caveats
 
 - **Deletion is real and irreversible.** Own messages only — enforced by author-ID filter on every delete. Fully offline-tested, but test on a throwaway account first.
