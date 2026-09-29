@@ -10,7 +10,7 @@
 import { Button } from "@components/Button";
 import { Logger } from "@utils/Logger";
 import { PluginNative } from "@utils/types";
-import { ChannelRouter, Checkbox, ConfirmModal, Modal, openModal, Text, TextInput, Toasts, useEffect, UserStore,useState } from "@webpack/common";
+import { ChannelRouter, Checkbox, ConfirmModal, openModal, Text, TextInput, Toasts, useEffect, UserStore,useState } from "@webpack/common";
 
 import {
     type ArchiverSettings,
@@ -21,6 +21,7 @@ import {
     getFriendIds,
     saveDmAsText,
 } from "./core";
+import { closeFloating, openFloating } from "./floating";
 
 const log = new Logger("DMArchiver/Dashboard");
 
@@ -34,16 +35,25 @@ interface Row {
 }
 
 export function openArchiveDashboard(initialSettings: ArchiverSettings, showDeleteOption: boolean, initialChannelId?: string) {
-    openModal(modalProps => (
-        <Modal
-            {...modalProps}
-            size="lg"
-            title="DMArchiver"
-            subtitle="Export DM media & transcripts, audit your DMs"
-        >
-            <Dashboard onClose={modalProps.onClose} initialSettings={initialSettings} showDeleteOption={showDeleteOption} initialChannelId={initialChannelId} />
-        </Modal>
-    ));
+    // floating window (same UX family as GhostDms/msgPurge): stays open while
+    // you browse DMs it opens, draggable + resizable, sizes persist
+    openFloating({
+        storageKey: "DMArchiver",
+        title: "DMArchiver — stays open while you browse",
+        render: close => (
+            <Dashboard
+                onClose={close}
+                initialSettings={initialSettings}
+                showDeleteOption={showDeleteOption}
+                initialChannelId={initialChannelId}
+            />
+        ),
+    });
+}
+
+/** close the floating dashboard (plugin stop() / harness reset) */
+export function closeArchiveDashboard(): boolean {
+    return closeFloating();
 }
 
 function Dashboard({ onClose, initialSettings, showDeleteOption, initialChannelId }: {
@@ -164,10 +174,10 @@ function Dashboard({ onClose, initialSettings, showDeleteOption, initialChannelI
 
     const openDm = (row: Row) => {
         // ghost DMs (non-friend, never opened) aren't in the sidebar, but the
-        // channel still exists — the router can navigate straight to it
+        // channel still exists — the router can navigate straight to it;
+        // the floating dashboard stays open so you can keep browsing/auditing
         try {
             ChannelRouter?.transitionToChannel?.(row.channelId);
-            onClose();
         } catch {
             Toasts.show({ message: "Could not open that DM.", id: Toasts.genId(), type: Toasts.Type.FAILURE });
         }

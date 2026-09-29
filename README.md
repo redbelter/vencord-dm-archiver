@@ -2,7 +2,7 @@
 
 A [Vencord](https://github.com/Vendicated/Vencord) userplugin that exports and preserves DM content — media files and full text history — lets you audit everyone you've ever DM'd (including closed/hidden DMs and non-friends), and optionally delete **only your own** messages.
 
-Now with a full **archive dashboard**: searchable DM list, multi-select, live export progress — right inside Discord.
+Now with a full **archive dashboard**: searchable DM list, multi-select, live export progress — right inside Discord. The dashboard is a **floating, resizable window** (same UX family as GhostDms/msgPurge): it stays open while you click through the DMs it lists, sizes persist per plugin, hide with – mid-export and it keeps going.
 
 ## Features
 
@@ -10,7 +10,7 @@ Now with a full **archive dashboard**: searchable DM list, multi-select, live ex
 - 📄 **Text transcripts** — full DM history saved as formatted `.txt`
 - 🔎 **Audit** — list every DM user, flag the ones you're *not* friends with
 - 🗑️ **Self-deletion** — batch-delete *your own* messages (rate-limited, retry, peer messages never touched); double-gated behind a setting
-- 🎛️ **Dashboard UI** — open with `/dm-dashboard` or the folder button in the DM chat bar
+- 🎛️ **Dashboard UI** — open with `/dm-dashboard` or the folder button in the DM chat bar; **floating window** (drag/resize/persist, – hides mid-export without killing it)
 - 🚫 Optional Quest-UI hiding
 - ⏯️ Resume-safe: existing files are skipped, skipped media gets a written report
 
@@ -45,6 +45,7 @@ A **separate Vencord plugin** for rate-limited deletion of **your own** messages
 - 🛡️ **Own messages only** — the engine filters by your user ID at scan time; peer messages are never queued, let alone deleted
 - 👥 **DM sweep options** — current channel, every DM, and "skip friends" filter
 - ⚡ **429-aware** — on rate-limit responses it cools down (60s+backoff) and retries instead of hammering
+- 🪟 **Floating window, not a modal** — the control panel is the same draggable/resizable mini-window family as GhostDms: navigate your chats while it watches, hide with – and the purge keeps running in the background, **Open** in the DM picker navigates without closing the panel
 
 ## Usage
 
@@ -96,7 +97,7 @@ A **third, read-only plugin**: a chat-bar button (and `/ghost-dms`) that lists *
 
 Copy the `ghostDms/` folder into `Vencord/src/userplugins/ghostDms/` and build the same way as above.
 
-- 🪟 Same **floating, resizable window** as GhostDms — drag it, resize it (⋮⋮ / ⋯ grips, sizes persist), hide with – and it keeps purging in the background; ✕ / double-click / Esc close. Long multi-hour sweeps no longer hold your chat hostage
+- 🪟 **All three plugins share one floating-window UX**: drag it, resize it (⋮⋮ / ⋯ grips, sizes persist per plugin), hide with – while work keeps running in the background; ✕ / double-click / Esc close
 - 👻 Discord's sidebar hides DMs with non-friends; the `/users/@me/channels` API returns **all** of them — this plugin shows the full list
 - 🏷️ Ghost accounts (unfriended/deactivated, missing from the user cache) are still named — the name comes from the recipient embedded in the channel payload
 - ➡️ **Open** routes you into the hidden DM (`ChannelRouter.transitionToChannel`); close it by clicking any other conversation

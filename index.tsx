@@ -25,7 +25,7 @@ import {
     saveAllDmsAsText,
     saveDmAsText,
 } from "./core";
-import { openArchiveDashboard } from "./Dashboard";
+import { closeArchiveDashboard, openArchiveDashboard } from "./Dashboard";
 
 const log = new Logger("DMArchiver");
 
@@ -136,6 +136,7 @@ export default definePlugin({
 
     stop() {
         applyQuestHiding(false);
+        closeArchiveDashboard(); // the floating window must die with the plugin
         log.info("stopped");
     },
 
