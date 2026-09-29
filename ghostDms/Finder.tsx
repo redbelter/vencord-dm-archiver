@@ -328,6 +328,15 @@ function clampIntoView(el: HTMLElement) {
 }
 
 const WIDTH_KEY = "GhostDmsWidth";
+const HEIGHT_KEY = "GhostDmsHeight";
+
+function savedHeight(): number {
+    try {
+        const v = parseInt(localStorage.getItem(HEIGHT_KEY) ?? "", 10);
+        if (v >= 200) return Math.min(v, (typeof window !== "undefined" ? window.innerHeight : 1920) - 40);
+    } catch { /* no storage */ }
+    return 0; // 0 = auto (max-height clamp)
+}
 
 function savedWidth(): number {
     try {
@@ -363,6 +372,43 @@ function makeResizable(el: HTMLElement, handleEl: HTMLElement) {
     const onResize = () => {
         const w = parseFloat(el.style.width);
         if (w && w > window.innerWidth) el.style.width = window.innerWidth + "px";
+    };
+    handleEl.addEventListener("mousedown", onDown);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    window.addEventListener("resize", onResize);
+    return () => {
+        handleEl.removeEventListener("mousedown", onDown);
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        window.removeEventListener("resize", onResize);
+    };
+}
+
+/** bottom-edge drag handle: resizes height, persists to localStorage */
+function makeResizableHeight(el: HTMLElement, handleEl: HTMLElement) {
+    let startY = 0, startH = 0, resizing = false;
+    const onDown = (e: MouseEvent) => {
+        resizing = true;
+        const rect = el.getBoundingClientRect();
+        startY = e.clientY; startH = rect.height;
+        e.preventDefault();
+    };
+    const onMove = (e: MouseEvent) => {
+        if (!resizing) return;
+        const { top } = el.getBoundingClientRect();
+        const max = Math.max(200, window.innerHeight - top - 8);
+        el.style.height = Math.max(200, Math.min(max, startH + e.clientY - startY)) + "px";
+    };
+    const onUp = () => {
+        if (!resizing) return;
+        resizing = false;
+        try { localStorage.setItem(HEIGHT_KEY, String(Math.round(el.getBoundingClientRect().height))); } catch { /* no storage */ }
+    };
+    const onResize = () => {
+        const h = parseFloat(el.style.height);
+        const { top } = el.getBoundingClientRect();
+        if (h && top + h > window.innerHeight) el.style.height = Math.max(200, window.innerHeight - top - 8) + "px";
     };
     handleEl.addEventListener("mousedown", onDown);
     window.addEventListener("mousemove", onMove);
@@ -423,7 +469,7 @@ export function openGhostFinder() {
     const el = document.createElement("div") as HTMLElement;
     el.style.cssText = [
         "position:fixed", "top:80px", "right:24px", "width:" + savedWidth() + "px",
-        "max-height:86vh", "z-index:" + FLOAT_Z,
+        "max-height:86vh", "display:flex", "flex-direction:column", "z-index:" + FLOAT_Z,
         "background:var(--bg-normal, #18191c)", "border:1px solid var(--border-subtle, #333)",
         "border-radius:10px", "box-shadow:0 8px 30px rgba(0,0,0,.6)", "padding:0",
         "color:var(--header-primary, #fff)",
@@ -432,8 +478,10 @@ export function openGhostFinder() {
     // React replaces ALL children of the container it roots on, so it roots on
     // this inner content div — the plain-DOM titlebar lives directly on `el`
     // and render() can never erase it.
+    if (savedHeight()) el.style.height = savedHeight() + "px";
+
     const content = document.createElement("div");
-    content.style.cssText = "padding:12px;max-height:calc(86vh - 46px);overflow-y:auto";
+    content.style.cssText = "padding:12px;overflow-y:auto;flex:1;min-height:0";
     const contentRoot = createRoot(content);
 
     let hidden = false;
@@ -496,11 +544,23 @@ export function openGhostFinder() {
     grip.textContent = "⋮⋮";
     el.appendChild(grip);
 
+    // bottom-edge resize grip (height), same visible-pill style rotated
+    const gripH = document.createElement("div");
+    gripH.title = "drag to resize height";
+    gripH.style.cssText = "position:absolute;bottom:-8px;left:50%;transform:translateX(-50%);"
+        + "height:16px;width:52px;cursor:ns-resize;border-radius:8px;user-select:none;"
+        + "background:var(--background-tertiary,#111214);border:1px solid var(--interactive-hover,#5865f2);"
+        + "box-shadow:0 2px 8px rgba(0,0,0,.5);color:var(--header-primary,#dcddde);font-size:11px;"
+        + "display:flex;align-items:center;justify-content:center;letter-spacing:-1px";
+    gripH.textContent = "⋯";
+    el.appendChild(gripH);
+
     bar.addEventListener("dblclick", onDblClick);
     const cleanup = makeDraggable(el, bar);
     const cleanupResize = makeResizable(el, grip);
+    const cleanupResizeH = makeResizableHeight(el, gripH);
     const origClose = handle.close;
-    handle.close = () => { cleanup(); cleanupResize(); bar.removeEventListener("dblclick", onDblClick); origClose(); };
+    handle.close = () => { cleanup(); cleanupResize(); cleanupResizeH(); bar.removeEventListener("dblclick", onDblClick); origClose(); };
 }
 
 const panelStyle: CSSProperties = {
