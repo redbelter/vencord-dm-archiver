@@ -69,7 +69,10 @@ export function mergePackageRows(live: GhostDmRow[], scan: PackageScan, friendId
         byChannel.add(dm.channelId);
         let username = scan.names?.[dm.recipientId];
         if (!username) {
-            try { username = UserStore.getUser(dm.recipientId)?.username; } catch { /* cache unavailable */ }
+            try {
+                const cu: any = UserStore.getUser(dm.recipientId);
+                username = cu?.globalName ?? cu?.global_name ?? cu?.username;
+            } catch { /* cache unavailable */ }
         }
         rows.push({
             channelId: dm.channelId,
@@ -212,20 +215,82 @@ export async function searchGuildRosters(
  * Ask Discord for the DM channel with this user. If one already exists
  * (including DMs hidden from /users/@me/channels), Discord returns THAT
  * channel with its history intact. If none exists it creates an empty one.
- * Returns { channelId, created } — created=true means a brand-new empty DM.
+ * Returns { channelId, recipientName? } — recipientName is the current profile
+ * Discord embedded in the response, if any.
  */
-export async function resolveDmByUserId(userId: string): Promise<string> {
+export async function resolveDmByUserId(userId: string): Promise<{ channelId: string; recipientName?: string; }> {
     const res: any = await RestAPI.post({ url: "/users/@me/channels", body: { recipient_id: userId } });
     // real RestAPI resolves with the bare channel body; some shapes nest it
     const ch = res?.id ? res : res?.body;
     if (!ch?.id) throw new Error("Discord did not return a DM channel");
-    return String(ch.id);
+    // the create-or-get response embeds the recipient's CURRENT profile —
+    // handy for fixing placeholder names on package-only rows
+    const rec = Array.isArray(ch.recipients) ? ch.recipients[0] : undefined;
+    return { channelId: String(ch.id), recipientName: rec?.global_name ?? rec?.username };
 }
 
 export interface BatchResult {
     opened: string[]; // channel ids restored (in order)
     failed: string[]; // user ids Discord refused (deleted/blocked) or errored
     rateLimited: boolean; // stopped early on Discord's rate limit
+}
+
+/**
+ * Ask Discord directly for one account's profile. The popcard endpoint
+ * (GET /users/{id}/profile) is the one that works for non-friends you have/had
+ * a DM with — plain GET /users/{id} 403s for non-friends — with the bare
+ * endpoint as a fallback. Returns null for deleted/blocked/rate-limited.
+ */
+async function fetchUserLite(userId: string): Promise<any | null> {
+    // real RestAPI resolves bare on 2xx and throws on 4xx; some shapes nest
+    const unwrap = (res: any) => (res?.user?.id ? res.user : res?.body?.user?.id ? res.body.user : res?.username ? res : res?.body?.id ? res.body : null);
+    try {
+        const u = unwrap(await RestAPI.get({ url: `/users/${userId}/profile` }));
+        if (u?.id) return u;
+    } catch { /* 404/403/429 — try the plain endpoint */ }
+    try {
+        return unwrap(await RestAPI.get({ url: `/users/${userId}` }));
+    } catch {
+        return null; // deleted / blocked / rate limited
+    }
+}
+
+/** placeholder label we render when no source knows the name */
+export function isPlaceholderName(row: { username: string; userId: string; }): boolean {
+    return row.username === `user ${row.userId}` || /^user[_ ]?\d+$/i.test(row.username);
+}
+
+/**
+ * Resolve placeholder names ("user 123…") for ids the data package couldn't
+ * name. Discord's export omits recipient profiles, so we ask the API per id —
+ * paced at ~1.1s because GET /users/{id} is capped around 10/10s server-side.
+ * Local UserStore answers first (free, no request). Deleted/blocked accounts
+ * simply stay unresolved — the summary counts them honestly.
+ */
+export async function resolveNamesForIds(
+    userIds: string[],
+    opts: { stop?: { stop: boolean; }; paceMs?: number; onProgress?: (done: number, total: number) => void; },
+): Promise<Record<string, string>> {
+    const names: Record<string, string> = {};
+    const stop = opts.stop ?? { stop: false };
+    const paceMs = opts.paceMs ?? 1100;
+    for (let i = 0; i < userIds.length; i++) {
+        if (stop.stop) break;
+        const id = userIds[i];
+        let name: string | undefined;
+        try {
+            const cu: any = UserStore.getUser(id);
+            name = cu?.globalName ?? cu?.global_name ?? cu?.username;
+        } catch { /* cache unavailable */ }
+        if (!name) {
+            const u = await fetchUserLite(id);
+            name = u?.global_name ?? u?.username;
+        }
+        if (name) names[id] = name;
+        opts.onProgress?.(i + 1, userIds.length);
+        if (i < userIds.length - 1 && paceMs) await new Promise(r => setTimeout(r, paceMs));
+    }
+    return names;
 }
 
 /**
@@ -246,7 +311,7 @@ export async function batchRestoreDms(
     for (let i = 0; i < userIds.length; i++) {
         if (opts.stop.stop) break;
         try {
-            opened.push(await resolveDmByUserId(userIds[i]));
+            opened.push((await resolveDmByUserId(userIds[i])).channelId);
         } catch (e: any) {
             if (e?.status === 429) { rateLimited = true; break; }
             failed.push(userIds[i]);
@@ -286,7 +351,9 @@ export async function listAllDms(): Promise<GhostDmRow[]> {
         rows.push({
             channelId,
             userId: uid,
-            username: user?.username ?? user?.global_name ?? `user ${uid}`,
+            // display name first (what Discord itself shows everywhere);
+            // auto-generated "user_123456" handles often have a real global_name
+            username: user?.global_name ?? user?.username ?? `user ${uid}`,
             isFriend: friendIds.has(uid),
         });
     };
@@ -592,6 +659,9 @@ function Finder() {
     const [bulkText, setBulkText] = useState("");
     const [lastScan, setLastScan] = useState<PackageScan | null>(null);
     const stopBulk = useState({ stop: false })[0];
+    const [namesBusy, setNamesBusy] = useState(false);
+    const [namesText, setNamesText] = useState("");
+    const stopNames = useState({ stop: false })[0];
 
     useEffect(() => {
         listAllDms().then(setRows).catch(() => setRows([]));
@@ -609,8 +679,13 @@ function Finder() {
         setLookupError("");
         setBusyId(id);
         try {
-            const channelId = await resolveDmByUserId(id);
+            const { channelId, recipientName } = await resolveDmByUserId(id);
             ChannelRouter?.transitionToChannel?.(channelId);
+            // the response embeds their current profile — fix any placeholder row
+            if (recipientName) {
+                setRows(prev => (prev ?? []).map(r2 =>
+                    r2.userId === id ? { ...r2, username: recipientName } : r2));
+            }
             // panel deliberately stays open — click through DMs without reopening
         } catch (error: any) {
             setLookupError(
@@ -651,10 +726,41 @@ function Finder() {
             setLastScan(scan);
             setPkgMsg(`imported ${scan.dms?.length ?? 0} DMs from the package — ${merged.added} conversation(s) Discord's live list no longer shows`
                 + (scan.groupDms ? ` (${scan.groupDms} group DMs skipped)` : ""));
+            // the export omits recipient profiles, so freshly-imported rows can
+            // read "user <id>" — try to fill the real names from the live API
+            const placeholders = merged.rows.filter(isPlaceholderName);
+            if (placeholders.length && localStorage.getItem("GhostDmsAutoNames") !== "0") {
+                resolveNames(merged.rows).catch(() => setNamesText("name lookup hit an unexpected error — try the Resolve button.")); // fire-and-forget; progress shows below
+            }
         } catch (error: any) {
             setPkgMsg(`❌ ${String(error?.message ?? error)}`);
         } finally {
             setPkgBusy(false);
+        }
+    };
+
+    // Resolve "user <id>" placeholder rows by asking Discord for each profile
+    // (paced). Auto-runs after a package import; manual button re-runs it.
+    const resolveNames = async (source?: GhostDmRow[]) => {
+        const targets = (source ?? rows ?? []).filter(isPlaceholderName);
+        if (!targets.length) return;
+        setNamesBusy(true);
+        stopNames.stop = false;
+        let processed = 0;
+        try {
+            const paceRaw = parseInt(localStorage.getItem("GhostDmsNamePace") ?? "", 10);
+            const names = await resolveNamesForIds(targets.map(r2 => r2.userId), {
+                stop: stopNames,
+                paceMs: Number.isFinite(paceRaw) && paceRaw >= 0 ? paceRaw : undefined,
+                onProgress: (done, total) => { processed = done; setNamesText(`looking up ${done}/${total}…`); },
+            });
+            const ids = Object.keys(names);
+            if (ids.length) {
+                setRows(prev => (prev ?? []).map(r2 => names[r2.userId] ? { ...r2, username: names[r2.userId] } : r2));
+            }
+            setNamesText(`${stopNames.stop ? "stopped — " : ""}resolved ${ids.length}, ${targets.length - ids.length} still unknown (deleted, blocked, or unfetchable)`);
+        } finally {
+            setNamesBusy(false);
         }
     };
 
@@ -827,6 +933,31 @@ function Finder() {
                             <Text variant="text-xs/normal">{pkgMsg}</Text>
                         </div>
                     ) : null}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+                        <Button
+                            variant="secondary"
+                            size="xs"
+                            disabled={namesBusy || !(rows ?? []).some(isPlaceholderName)}
+                            onClick={() => resolveNames()}
+                        >
+                            {namesBusy ? "looking up…" : `Resolve ${(rows ?? []).filter(isPlaceholderName).length} unknown name(s)`}
+                        </Button>
+                        {namesBusy ? (
+                            <Button variant="secondary" size="xs" onClick={() => { stopNames.stop = true; }}>
+                                Stop
+                            </Button>
+                        ) : null}
+                    </div>
+                    {namesText ? (
+                        <div style={{ marginTop: 4 }}>
+                            <Text variant="text-xs/normal">{namesText}</Text>
+                        </div>
+                    ) : null}
+                    <Text variant="text-xs/normal" style={{ opacity: 0.6, marginTop: 2 }}>
+                        Discord's export doesn't include people's profiles, so some rows say "user ‹id›".
+                        This asks Discord (live, paced ~1.1s apart) for each account's current name; deleted,
+                        blocked, or rate-limited accounts stay unknown.
+                    </Text>
                 </div>
             ) : null}
 
