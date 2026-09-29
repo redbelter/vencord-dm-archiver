@@ -380,26 +380,19 @@ export function openGhostFinder() {
         "color:var(--header-primary, #fff)",
     ].join(";");
 
-    const root = createRoot(el);
+    // React replaces ALL children of the container it roots on, so it roots on
+    // this inner content div — the plain-DOM titlebar lives directly on `el`
+    // and render() can never erase it.
+    const content = document.createElement("div");
+    content.style.cssText = "padding:12px";
+    const contentRoot = createRoot(content);
+
     let hidden = false;
-
-    // while hidden, the chat-bar ghost icon is in DM views only — a stranded
-    // user always has this bubble to click
-    const bubble = document.createElement("button");
-    bubble.textContent = "👻 Ghost DMs";
-    bubble.title = "Show the Ghost DMs panel";
-    bubble.style.cssText = "display:none;position:fixed;bottom:16px;right:16px;z-index:" + FLOAT_Z
-        + ";padding:8px 14px;border-radius:20px;border:1px solid var(--border-subtle,#444);"
-        + "background:var(--bg-normal,#18191c);color:var(--header-primary,#fff);cursor:pointer;"
-        + "box-shadow:0 4px 16px rgba(0,0,0,.5);font-size:13px";
-    bubble.addEventListener("click", () => handle.toggle());
-
     const handle: FloatingHandle = {
-        close: () => { }, // filled below once we have root+el
+        close: () => { }, // filled below once we have contentRoot+el
         toggle: () => {
             hidden = !hidden;
             el.style.display = hidden ? "none" : "";
-            bubble.style.display = hidden ? "" : "none";
         },
         isMin: () => hidden,
     };
@@ -408,20 +401,17 @@ export function openGhostFinder() {
     };
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") handle.close(); };
     handle.close = () => {
-        try { root.unmount(); } catch { /* already gone */ }
+        try { contentRoot.unmount(); } catch { /* already gone */ }
         el.remove();
-        bubble.remove();
         window.removeEventListener("keydown", onKey);
         floating = null;
     };
 
     document.body.appendChild(el);
-    document.body.appendChild(bubble);
     window.addEventListener("keydown", onKey);
-    floating = { root, el, handle };
+    floating = { root: contentRoot, el, handle };
 
-    // header drag handle + controls rendered INSIDE the react tree would need
-    // refs; simpler: prepend a plain DOM titlebar and wire it directly.
+    // plain-DOM titlebar (drag handle + hide/close), sibling of the React root
     const bar = document.createElement("div");
     bar.style.cssText = "padding:10px 14px;font-weight:700;cursor:move;border-bottom:1px solid var(--border-subtle,#333);display:flex;justify-content:space-between;align-items:center;user-select:none";
     const title = document.createElement("span");
@@ -436,16 +426,14 @@ export function openGhostFinder() {
         b.addEventListener("click", fn);
         btns.appendChild(b);
     };
-    mk("–", "hide panel (a small reopen bubble appears bottom-right; the ghost bar icon also brings it back)", () => handle.toggle());
+    mk("–", "hide (bring it back with the bar button, re-clicking it, or /ghost-dms — your list and selection are kept)", () => handle.toggle());
     mk("✕", "close Ghost DMs (double-click the title bar does this too)", () => handle.close(), true);
     bar.appendChild(title);
     bar.appendChild(btns);
     el.insertBefore(bar, el.firstChild);
 
-    const content = document.createElement("div");
-    content.style.cssText = "padding:12px";
     el.appendChild(content);
-    root.render(<Finder />);
+    contentRoot.render(<Finder />);
 
     bar.addEventListener("dblclick", onDblClick);
     const cleanup = makeDraggable(el, bar);
