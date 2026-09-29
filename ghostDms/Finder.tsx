@@ -484,12 +484,16 @@ export function openGhostFinder() {
     el.appendChild(content);
     contentRoot.render(<Finder />);
 
-    // right-edge resize grip
+    // right-edge resize grip: a visible pill straddling the border so it's
+    // actually findable (an 8px faint glyph was invisible in practice)
     const grip = document.createElement("div");
     grip.title = "drag to resize width";
-    grip.style.cssText = "position:absolute;top:0;right:-3px;width:8px;height:100%;cursor:ew-resize;"
-        + "display:flex;align-items:center;justify-content:center;color:var(--interactive-normal,#888);user-select:none";
-    grip.textContent = "⋮";
+    grip.style.cssText = "position:absolute;top:50%;transform:translateY(-50%);right:-8px;"
+        + "width:16px;height:52px;cursor:ew-resize;border-radius:8px;user-select:none;"
+        + "background:var(--background-tertiary,#111214);border:1px solid var(--interactive-hover,#5865f2);"
+        + "box-shadow:0 2px 8px rgba(0,0,0,.5);color:var(--header-primary,#dcddde);font-size:11px;"
+        + "display:flex;align-items:center;justify-content:center;letter-spacing:-1px";
+    grip.textContent = "⋮⋮";
     el.appendChild(grip);
 
     bar.addEventListener("dblclick", onDblClick);
