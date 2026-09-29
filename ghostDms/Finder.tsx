@@ -469,7 +469,7 @@ export function openGhostFinder() {
     const el = document.createElement("div") as HTMLElement;
     el.style.cssText = [
         "position:fixed", "top:80px", "right:24px", "width:" + savedWidth() + "px",
-        "max-height:55vh", "display:flex", "flex-direction:column", "z-index:" + FLOAT_Z,
+        "display:flex", "flex-direction:column", "z-index:" + FLOAT_Z,
         "background:var(--bg-normal, #18191c)", "border:1px solid var(--border-subtle, #333)",
         "border-radius:10px", "box-shadow:0 8px 30px rgba(0,0,0,.6)", "padding:0",
         "color:var(--header-primary, #fff)",
@@ -478,7 +478,9 @@ export function openGhostFinder() {
     // React replaces ALL children of the container it roots on, so it roots on
     // this inner content div — the plain-DOM titlebar lives directly on `el`
     // and render() can never erase it.
-    if (savedHeight()) el.style.height = savedHeight() + "px";
+    // start compact; NO max-height cap — the bottom grip can grow it freely
+    // (drag/resize clamps only keep it on-screen, never below the start size)
+    el.style.height = savedHeight() ? savedHeight() + "px" : "55vh";
 
     const content = document.createElement("div");
     content.style.cssText = "padding:12px;overflow-y:auto;flex:1;min-height:0";
