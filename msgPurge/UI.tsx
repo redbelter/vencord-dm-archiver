@@ -8,27 +8,32 @@
 // and pause / resume / stop for long-running deletions.
 
 import { Button } from "@components/Button";
-import { ChannelRouter, Checkbox, Modal, openModal, Text, TextInput, useEffect, useState } from "@webpack/common";
+import { ChannelRouter, Checkbox, Text, TextInput, useEffect, useState } from "@webpack/common";
 import type { CSSProperties } from "react";
 
 import { type DmRow, getDmSummary, listDms, type PurgeConfig, type PurgeEngine, type PurgeEstimate, type PurgeScope } from "./engine";
+import { closeFloating, openFloating } from "./floating";
 
 export function openPurgeControl(engine: PurgeEngine, initialScope: PurgeScope, currentChannelId?: string) {
-    openModal(modalProps => (
-        <Modal
-            {...modalProps}
-            size="md"
-            title="msgPurge"
-            subtitle="Rate-limited deletion of your own messages"
-        >
+    // floating window (same UX family as GhostDms): stays open while you
+    // browse/navigate, draggable, resizable (sizes persist), hide/✕/dblclick/Esc
+    openFloating({
+        storageKey: "MsgPurge",
+        title: "msgPurge — runs in the background",
+        render: close => (
             <PurgeControl
-                onClose={modalProps.onClose}
+                onClose={close}
                 engine={engine}
                 initialScope={initialScope}
                 currentChannelId={currentChannelId}
             />
-        </Modal>
-    ));
+        ),
+    });
+}
+
+/** toggle/close helpers for the plugin's stop() and re-entry paths */
+export function closePurgeControl(): boolean {
+    return closeFloating();
 }
 
 function fmtDuration(ms: number): string {
@@ -299,7 +304,7 @@ function PurgeControl({ engine, onClose, initialScope, currentChannelId }: {
                                                 onClick={() => {
                                                     try {
                                                         ChannelRouter?.transitionToChannel?.(r.channelId);
-                                                        onClose();
+                                                        // floating window stays open — same browse UX as GhostDms
                                                     } catch { /* router unavailable */ }
                                                 }}
                                             >

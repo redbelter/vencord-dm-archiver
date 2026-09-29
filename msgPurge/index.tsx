@@ -17,7 +17,7 @@ import definePlugin, { OptionType } from "@utils/types";
 import { SelectedChannelStore, Toasts } from "@webpack/common";
 
 import { PurgeEngine, type PurgeScope,setChannelIdProvider } from "./engine";
-import { openPurgeControl } from "./UI";
+import { closePurgeControl, openPurgeControl } from "./UI";
 
 const log = new Logger("MsgPurge");
 
@@ -203,6 +203,7 @@ export default definePlugin({
             engine.cancel();
             log.info("stopped mid-run — queue saved");
         }
+        closePurgeControl(); // the control window must die with the plugin
         setChannelIdProvider(() => undefined);
     },
 

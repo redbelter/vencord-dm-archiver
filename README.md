@@ -96,6 +96,7 @@ A **third, read-only plugin**: a chat-bar button (and `/ghost-dms`) that lists *
 
 Copy the `ghostDms/` folder into `Vencord/src/userplugins/ghostDms/` and build the same way as above.
 
+- 🪟 Same **floating, resizable window** as GhostDms — drag it, resize it (⋮⋮ / ⋯ grips, sizes persist), hide with – and it keeps purging in the background; ✕ / double-click / Esc close. Long multi-hour sweeps no longer hold your chat hostage
 - 👻 Discord's sidebar hides DMs with non-friends; the `/users/@me/channels` API returns **all** of them — this plugin shows the full list
 - 🏷️ Ghost accounts (unfriended/deactivated, missing from the user cache) are still named — the name comes from the recipient embedded in the channel payload
 - ➡️ **Open** routes you into the hidden DM (`ChannelRouter.transitionToChannel`); close it by clicking any other conversation
