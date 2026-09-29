@@ -469,7 +469,7 @@ export function openGhostFinder() {
     const el = document.createElement("div") as HTMLElement;
     el.style.cssText = [
         "position:fixed", "top:80px", "right:24px", "width:" + savedWidth() + "px",
-        "max-height:86vh", "display:flex", "flex-direction:column", "z-index:" + FLOAT_Z,
+        "max-height:55vh", "display:flex", "flex-direction:column", "z-index:" + FLOAT_Z,
         "background:var(--bg-normal, #18191c)", "border:1px solid var(--border-subtle, #333)",
         "border-radius:10px", "box-shadow:0 8px 30px rgba(0,0,0,.6)", "padding:0",
         "color:var(--header-primary, #fff)",
@@ -965,7 +965,7 @@ function Finder() {
                 </div>
             ) : null}
 
-            <div style={{ ...panelStyle, maxHeight: "50vh", overflowY: "auto", padding: 4 }}>
+            <div style={{ ...panelStyle, overflowY: "auto", padding: 4 }}>
                 {rows !== null && !visible.length ? (
                     <div style={{ padding: 12, opacity: 0.7 }}>No DMs match this filter.</div>
                 ) : null}
