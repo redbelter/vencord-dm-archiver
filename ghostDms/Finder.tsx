@@ -327,6 +327,55 @@ function clampIntoView(el: HTMLElement) {
     el.style.top = Math.max(0, Math.min(window.innerHeight - 44, top)) + "px";
 }
 
+const WIDTH_KEY = "GhostDmsWidth";
+
+function savedWidth(): number {
+    try {
+        const v = parseInt(localStorage.getItem(WIDTH_KEY) ?? "", 10);
+        if (v >= 320 && v <= 3000) return Math.min(v, (typeof window !== "undefined" ? window.innerWidth : 1920) - 16);
+    } catch { /* no storage */ }
+    return 460;
+}
+
+/** right-edge drag handle: resizes width, persists to localStorage */
+function makeResizable(el: HTMLElement, handleEl: HTMLElement) {
+    let startX = 0, startW = 0, resizing = false;
+    const onDown = (e: MouseEvent) => {
+        resizing = true;
+        const rect = el.getBoundingClientRect();
+        startX = e.clientX; startW = rect.width;
+        el.style.left = rect.left + "px";
+        el.style.top = rect.top + "px";
+        el.style.right = "auto";
+        e.preventDefault();
+    };
+    const onMove = (e: MouseEvent) => {
+        if (!resizing) return;
+        const left = parseFloat(el.style.left) || 0;
+        const max = Math.max(320, window.innerWidth - left - 8);
+        el.style.width = Math.max(320, Math.min(max, startW + e.clientX - startX)) + "px";
+    };
+    const onUp = () => {
+        if (!resizing) return;
+        resizing = false;
+        try { localStorage.setItem(WIDTH_KEY, String(Math.round(el.getBoundingClientRect().width))); } catch { /* no storage */ }
+    };
+    const onResize = () => {
+        const w = parseFloat(el.style.width);
+        if (w && w > window.innerWidth) el.style.width = window.innerWidth + "px";
+    };
+    handleEl.addEventListener("mousedown", onDown);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    window.addEventListener("resize", onResize);
+    return () => {
+        handleEl.removeEventListener("mousedown", onDown);
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        window.removeEventListener("resize", onResize);
+    };
+}
+
 function makeDraggable(el: HTMLElement, handleEl: HTMLElement) {
     let sx = 0, sy = 0, ox = 0, oy = 0, dragging = false;
     const onDown = (e: MouseEvent) => {
@@ -373,8 +422,8 @@ export function openGhostFinder() {
 
     const el = document.createElement("div") as HTMLElement;
     el.style.cssText = [
-        "position:fixed", "top:80px", "right:24px", "width:460px",
-        "max-height:80vh", "overflow-y:auto", "z-index:" + FLOAT_Z,
+        "position:fixed", "top:80px", "right:24px", "width:" + savedWidth() + "px",
+        "max-height:86vh", "z-index:" + FLOAT_Z,
         "background:var(--bg-normal, #18191c)", "border:1px solid var(--border-subtle, #333)",
         "border-radius:10px", "box-shadow:0 8px 30px rgba(0,0,0,.6)", "padding:0",
         "color:var(--header-primary, #fff)",
@@ -384,7 +433,7 @@ export function openGhostFinder() {
     // this inner content div — the plain-DOM titlebar lives directly on `el`
     // and render() can never erase it.
     const content = document.createElement("div");
-    content.style.cssText = "padding:12px";
+    content.style.cssText = "padding:12px;max-height:calc(86vh - 46px);overflow-y:auto";
     const contentRoot = createRoot(content);
 
     let hidden = false;
@@ -435,10 +484,19 @@ export function openGhostFinder() {
     el.appendChild(content);
     contentRoot.render(<Finder />);
 
+    // right-edge resize grip
+    const grip = document.createElement("div");
+    grip.title = "drag to resize width";
+    grip.style.cssText = "position:absolute;top:0;right:-3px;width:8px;height:100%;cursor:ew-resize;"
+        + "display:flex;align-items:center;justify-content:center;color:var(--interactive-normal,#888);user-select:none";
+    grip.textContent = "⋮";
+    el.appendChild(grip);
+
     bar.addEventListener("dblclick", onDblClick);
     const cleanup = makeDraggable(el, bar);
+    const cleanupResize = makeResizable(el, grip);
     const origClose = handle.close;
-    handle.close = () => { cleanup(); bar.removeEventListener("dblclick", onDblClick); origClose(); };
+    handle.close = () => { cleanup(); cleanupResize(); bar.removeEventListener("dblclick", onDblClick); origClose(); };
 }
 
 const panelStyle: CSSProperties = {
@@ -799,6 +857,12 @@ function Finder() {
             {rows !== null && visible.length ? (
                 <div style={panelStyle}>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                        <Button
+                            variant="secondary" size="xs" disabled={bulkBusy}
+                            onClick={() => selectMany(visible.map(r => r.userId), true)}
+                        >
+                            Select all ({visible.length})
+                        </Button>
                         <Button
                             variant="secondary" size="xs" disabled={bulkBusy}
                             onClick={() => selectMany(visible.filter(r => !r.isFriend).map(r => r.userId), true)}
