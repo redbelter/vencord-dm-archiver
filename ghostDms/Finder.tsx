@@ -394,12 +394,47 @@ function clampIntoView(el: HTMLElement) {
     el.style.top = Math.max(0, Math.min(window.innerHeight - 44, top)) + "px";
 }
 
+// The renderer context this code runs in may have NO usable localStorage:
+// the global can be absent entirely (ReferenceError on bare `localStorage` —
+// seen live in Discord's renderer; even Vencord avoids the bare global) or
+// throw SecurityError in sandboxed file:// contexts. Probe lazily per call
+// and fall back to a module-memory map: persistence degrades to per-session
+// instead of crashing the plugin. NEVER touch bare `localStorage` directly.
+const __memStore = new Map<string, string>();
+function nativeStore(): { getItem(k: string): string | null; setItem(k: string, v: string): void; } | null {
+    try {
+        const s = (globalThis as any).localStorage;
+        if (!s) return null;
+        s.getItem("\u0000probe"); // sandboxed contexts throw on access, not assignment
+        return s;
+    } catch { return null; }
+}
+const store = {
+    getItem(k: string): string | null {
+        const s = nativeStore();
+        if (s) {
+            try {
+                const v = s.getItem(k);
+                return v == null ? (__memStore.get(k) ?? null) : v;
+            } catch { /* fall through to memory */ }
+        }
+        return __memStore.get(k) ?? null;
+    },
+    setItem(k: string, v: string): void {
+        const s = nativeStore();
+        if (s) {
+            try { s.setItem(k, v); return; } catch { /* fall through to memory */ }
+        }
+        __memStore.set(k, v);
+    },
+};
+
 const WIDTH_KEY = "GhostDmsWidth";
 const HEIGHT_KEY = "GhostDmsHeight";
 
 function savedHeight(): number {
     try {
-        const v = parseInt(localStorage.getItem(HEIGHT_KEY) ?? "", 10);
+        const v = parseInt(store.getItem(HEIGHT_KEY) ?? "", 10);
         if (v >= 200) return Math.min(v, (typeof window !== "undefined" ? window.innerHeight : 1920) - 40);
     } catch { /* no storage */ }
     return 0; // 0 = auto (max-height clamp)
@@ -407,7 +442,7 @@ function savedHeight(): number {
 
 function savedWidth(): number {
     try {
-        const v = parseInt(localStorage.getItem(WIDTH_KEY) ?? "", 10);
+        const v = parseInt(store.getItem(WIDTH_KEY) ?? "", 10);
         if (v >= 320 && v <= 3000) return Math.min(v, (typeof window !== "undefined" ? window.innerWidth : 1920) - 16);
     } catch { /* no storage */ }
     return 460;
@@ -434,7 +469,7 @@ function makeResizable(el: HTMLElement, handleEl: HTMLElement) {
     const onUp = () => {
         if (!resizing) return;
         resizing = false;
-        try { localStorage.setItem(WIDTH_KEY, String(Math.round(el.getBoundingClientRect().width))); } catch { /* no storage */ }
+        store.setItem(WIDTH_KEY, String(Math.round(el.getBoundingClientRect().width)));
     };
     const onResize = () => {
         const w = parseFloat(el.style.width);
@@ -470,7 +505,7 @@ function makeResizableHeight(el: HTMLElement, handleEl: HTMLElement) {
     const onUp = () => {
         if (!resizing) return;
         resizing = false;
-        try { localStorage.setItem(HEIGHT_KEY, String(Math.round(el.getBoundingClientRect().height))); } catch { /* no storage */ }
+        store.setItem(HEIGHT_KEY, String(Math.round(el.getBoundingClientRect().height)));
     };
     const onResize = () => {
         const h = parseFloat(el.style.height);
@@ -729,7 +764,7 @@ function Finder() {
             // the export omits recipient profiles, so freshly-imported rows can
             // read "user <id>" — try to fill the real names from the live API
             const placeholders = merged.rows.filter(isPlaceholderName);
-            if (placeholders.length && localStorage.getItem("GhostDmsAutoNames") !== "0") {
+            if (placeholders.length && store.getItem("GhostDmsAutoNames") !== "0") {
                 resolveNames(merged.rows).catch(() => setNamesText("name lookup hit an unexpected error — try the Resolve button.")); // fire-and-forget; progress shows below
             }
         } catch (error: any) {
@@ -748,7 +783,7 @@ function Finder() {
         stopNames.stop = false;
         let processed = 0;
         try {
-            const paceRaw = parseInt(localStorage.getItem("GhostDmsNamePace") ?? "", 10);
+            const paceRaw = parseInt(store.getItem("GhostDmsNamePace") ?? "", 10);
             const names = await resolveNamesForIds(targets.map(r2 => r2.userId), {
                 stop: stopNames,
                 paceMs: Number.isFinite(paceRaw) && paceRaw >= 0 ? paceRaw : undefined,
@@ -938,7 +973,7 @@ function Finder() {
                             variant="secondary"
                             size="xs"
                             disabled={namesBusy || !(rows ?? []).some(isPlaceholderName)}
-                            onClick={() => resolveNames()}
+                            onClick={() => resolveNames().catch(() => setNamesText("name lookup hit an unexpected error."))}
                         >
                             {namesBusy ? "looking up…" : `Resolve ${(rows ?? []).filter(isPlaceholderName).length} unknown name(s)`}
                         </Button>

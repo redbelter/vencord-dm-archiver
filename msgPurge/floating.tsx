@@ -28,6 +28,41 @@ interface FloatingOpts {
 const FLOAT_Z = 2147483000; // above Discord's modals/menus
 const MIN_W = 320, MIN_H = 200;
 
+// This renderer context may have NO usable localStorage: the global can be
+// absent entirely (bare `localStorage` -> ReferenceError; seen live in
+// Discord's renderer — even Vencord avoids the bare global) or throw
+// SecurityError in sandboxed contexts. Probe lazily and fall back to a
+// module-memory map: persistence degrades to per-session, never crashes.
+// NEVER touch bare `localStorage` directly here.
+const __memStore = new Map<string, string>();
+function nativeStore(): { getItem(k: string): string | null; setItem(k: string, v: string): void; } | null {
+    try {
+        const s = (globalThis as any).localStorage;
+        if (!s) return null;
+        s.getItem("\u0000probe"); // sandboxed contexts throw on access, not assignment
+        return s;
+    } catch { return null; }
+}
+const store = {
+    getItem(k: string): string | null {
+        const s = nativeStore();
+        if (s) {
+            try {
+                const v = s.getItem(k);
+                return v == null ? (__memStore.get(k) ?? null) : v;
+            } catch { /* fall through to memory */ }
+        }
+        return __memStore.get(k) ?? null;
+    },
+    setItem(k: string, v: string): void {
+        const s = nativeStore();
+        if (s) {
+            try { s.setItem(k, v); return; } catch { /* fall through to memory */ }
+        }
+        __memStore.set(k, v);
+    },
+};
+
 let floating: { root: any; el: HTMLElement; handle: FloatingHandle; } | null = null;
 
 export function closeFloating(): boolean {
@@ -48,7 +83,7 @@ export function openFloating(opts: FloatingOpts): boolean {
     const heightKey = opts.storageKey + "Height";
     const saved = (key: string, min: number, fallback: number, viewport: number) => {
         try {
-            const v = parseInt(localStorage.getItem(key) ?? "", 10);
+            const v = parseInt(store.getItem(key) ?? "", 10);
             if (Number.isFinite(v) && v >= min) return Math.min(v, viewport - 16);
         } catch { /* no storage */ }
         return fallback;
@@ -234,7 +269,7 @@ function makeSize(el: HTMLElement, handleEl: HTMLElement, axis: "width" | "heigh
         if (!resizing) return;
         resizing = false;
         const rect = el.getBoundingClientRect();
-        try { localStorage.setItem(key, String(Math.round(axis === "width" ? rect.width : rect.height))); } catch { /* no storage */ }
+        store.setItem(key, String(Math.round(axis === "width" ? rect.width : rect.height)));
     };
     const onResize = () => {
         const rect = el.getBoundingClientRect();
