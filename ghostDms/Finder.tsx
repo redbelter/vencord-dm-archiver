@@ -12,10 +12,9 @@ import {
     ChannelRouter,
     ChannelStore,
     Checkbox,
+    createRoot,
     GuildMemberStore,
     GuildStore,
-    Modal,
-    openModal,
     RestAPI,
     Text,
     TextInput,
@@ -305,17 +304,114 @@ export async function listAllDms(): Promise<GhostDmRow[]> {
     return rows;
 }
 
+// The finder lives in a FLOATING panel, not a blocking modal: it stays open
+// (always-on-top, draggable) while you click through the DMs it opened, so
+// you can navigate your restored conversations without closing/reopening.
+
+interface FloatingHandle {
+    close(): void;
+    toggle(): void;
+    isMin(): boolean;
+}
+let floating: { root: any; el: HTMLElement; handle: FloatingHandle; } | null = null;
+
+const FLOAT_Z = 2147483000; // above Discord's modals/menus
+
+function makeDraggable(el: HTMLElement, handleEl: HTMLElement) {
+    let sx = 0, sy = 0, ox = 0, oy = 0, dragging = false;
+    const onDown = (e: MouseEvent) => {
+        if ((e.target as HTMLElement)?.closest("button")) return;
+        dragging = true;
+        const rect = el.getBoundingClientRect();
+        sx = e.clientX; sy = e.clientY; ox = rect.left; oy = rect.top;
+        el.style.right = "auto"; // switch to left/top anchoring once dragged
+        e.preventDefault();
+    };
+    const onMove = (e: MouseEvent) => {
+        if (!dragging) return;
+        el.style.left = Math.max(0, Math.min(window.innerWidth - 80, ox + e.clientX - sx)) + "px";
+        el.style.top = Math.max(0, Math.min(window.innerHeight - 40, oy + e.clientY - sy)) + "px";
+    };
+    const onUp = () => { dragging = false; };
+    handleEl.addEventListener("mousedown", onDown);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+        handleEl.removeEventListener("mousedown", onDown);
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+    };
+}
+
+export function closeGhostFinder() {
+    floating?.handle.close();
+}
+
 export function openGhostFinder() {
-    openModal(modalProps => (
-        <Modal
-            {...modalProps}
-            size="md"
-            title="Ghost DMs"
-            subtitle="Every private conversation you've ever had — open the ones Discord hides"
-        >
-            <Finder onClose={modalProps.onClose} />
-        </Modal>
-    ));
+    // toggle behaviour: button re-click hides/restores instead of stacking panels
+    if (floating) {
+        floating.handle.toggle();
+        return;
+    }
+    if (typeof document === "undefined" || typeof createRoot !== "function") return;
+
+    const el = document.createElement("div") as HTMLElement;
+    el.style.cssText = [
+        "position:fixed", "top:80px", "right:24px", "width:460px",
+        "max-height:80vh", "overflow-y:auto", "z-index:" + FLOAT_Z,
+        "background:var(--bg-normal, #18191c)", "border:1px solid var(--border-subtle, #333)",
+        "border-radius:10px", "box-shadow:0 8px 30px rgba(0,0,0,.6)", "padding:0",
+        "color:var(--header-primary, #fff)",
+    ].join(";");
+
+    const root = createRoot(el);
+    let hidden = false;
+    const handle: FloatingHandle = {
+        close: () => { }, // filled below once we have root+el
+        toggle: () => {
+            hidden = !hidden;
+            el.style.display = hidden ? "none" : "";
+        },
+        isMin: () => hidden,
+    };
+    handle.close = () => {
+        try { root.unmount(); } catch { /* already gone */ }
+        el.remove();
+        floating = null;
+    };
+
+    document.body.appendChild(el);
+    floating = { root, el, handle };
+
+    // header drag handle + controls rendered INSIDE the react tree would need
+    // refs; simpler: prepend a plain DOM titlebar and wire it directly.
+    const bar = document.createElement("div");
+    bar.style.cssText = "padding:10px 14px;font-weight:700;cursor:move;border-bottom:1px solid var(--border-subtle,#333);display:flex;justify-content:space-between;align-items:center;user-select:none";
+    const title = document.createElement("span");
+    title.textContent = "Ghost DMs — stays open while you browse";
+    const btns = document.createElement("span");
+    const mk = (label: string, titleTxt: string, fn: () => void) => {
+        const b = document.createElement("button");
+        b.textContent = label;
+        b.title = titleTxt;
+        b.style.cssText = "margin-left:6px;background:none;border:none;color:inherit;font-size:14px;cursor:pointer";
+        b.addEventListener("click", fn);
+        btns.appendChild(b);
+    };
+    mk("—", "hide (click the bar icon to bring back)", () => handle.toggle());
+    mk("✕", "close", () => handle.close());
+    bar.appendChild(title);
+    bar.appendChild(btns);
+    el.insertBefore(bar, el.firstChild);
+
+    const content = document.createElement("div");
+    content.style.cssText = "padding:12px";
+    el.appendChild(content);
+    root.render(<Finder />);
+
+    const cleanup = makeDraggable(el, bar);
+    const origClose = handle.close;
+    handle.close = () => { cleanup(); origClose(); };
 }
 
 const panelStyle: CSSProperties = {
@@ -324,7 +420,7 @@ const panelStyle: CSSProperties = {
     border: "1px solid var(--border-subtle, #333)",
 };
 
-function Finder({ onClose }: { onClose(): void; }) {
+function Finder() {
     const [rows, setRows] = useState<GhostDmRow[] | null>(null);
     const [search, setSearch] = useState("");
     const [nonFriendsOnly, setNonFriendsOnly] = useState(false);
@@ -364,7 +460,7 @@ function Finder({ onClose }: { onClose(): void; }) {
         try {
             const channelId = await resolveDmByUserId(id);
             ChannelRouter?.transitionToChannel?.(channelId);
-            onClose();
+            // panel deliberately stays open — click through DMs without reopening
         } catch (error: any) {
             setLookupError(
                 error?.status === 404 || error?.status === 400 || error?.status === 403
@@ -480,10 +576,10 @@ function Finder({ onClose }: { onClose(): void; }) {
             openPersonById(row.userId);
             return;
         }
-        // the channel exists even when the sidebar hides it — jump straight to it
+        // the channel exists even when the sidebar hides it — jump straight to it;
+        // the floating panel stays open so you can keep navigating
         try {
             ChannelRouter?.transitionToChannel?.(row.channelId);
-            onClose();
         } catch {
             Toasts.show({ message: "Could not open that DM.", id: Toasts.genId(), type: Toasts.Type.FAILURE });
         }
