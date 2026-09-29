@@ -317,29 +317,45 @@ let floating: { root: any; el: HTMLElement; handle: FloatingHandle; } | null = n
 
 const FLOAT_Z = 2147483000; // above Discord's modals/menus
 
+function clampIntoView(el: HTMLElement) {
+    // NEVER let any part of the titlebar (and its hide/close buttons) leave the
+    // viewport — a partially off-screen panel is an unclosable panel.
+    const w = el.getBoundingClientRect().width || 460;
+    const left = parseFloat(el.style.left || "0") || 0;
+    const top = parseFloat(el.style.top || "0") || 0;
+    el.style.left = Math.max(0, Math.min(window.innerWidth - w, left)) + "px";
+    el.style.top = Math.max(0, Math.min(window.innerHeight - 44, top)) + "px";
+}
+
 function makeDraggable(el: HTMLElement, handleEl: HTMLElement) {
     let sx = 0, sy = 0, ox = 0, oy = 0, dragging = false;
     const onDown = (e: MouseEvent) => {
-        if ((e.target as HTMLElement)?.closest("button")) return;
+        if ((e.target as HTMLElement)?.closest?.("button")) return;
         dragging = true;
         const rect = el.getBoundingClientRect();
         sx = e.clientX; sy = e.clientY; ox = rect.left; oy = rect.top;
+        el.style.left = ox + "px";
+        el.style.top = oy + "px";
         el.style.right = "auto"; // switch to left/top anchoring once dragged
         e.preventDefault();
     };
     const onMove = (e: MouseEvent) => {
         if (!dragging) return;
-        el.style.left = Math.max(0, Math.min(window.innerWidth - 80, ox + e.clientX - sx)) + "px";
-        el.style.top = Math.max(0, Math.min(window.innerHeight - 40, oy + e.clientY - sy)) + "px";
+        el.style.left = String(ox + e.clientX - sx) + "px";
+        el.style.top = String(oy + e.clientY - sy) + "px";
+        clampIntoView(el);
     };
     const onUp = () => { dragging = false; };
+    const onResize = () => clampIntoView(el);
     handleEl.addEventListener("mousedown", onDown);
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+    window.addEventListener("resize", onResize);
     return () => {
         handleEl.removeEventListener("mousedown", onDown);
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
+        window.removeEventListener("resize", onResize);
     };
 }
 
@@ -366,21 +382,42 @@ export function openGhostFinder() {
 
     const root = createRoot(el);
     let hidden = false;
+
+    // while hidden, the chat-bar ghost icon is in DM views only — a stranded
+    // user always has this bubble to click
+    const bubble = document.createElement("button");
+    bubble.textContent = "👻 Ghost DMs";
+    bubble.title = "Show the Ghost DMs panel";
+    bubble.style.cssText = "display:none;position:fixed;bottom:16px;right:16px;z-index:" + FLOAT_Z
+        + ";padding:8px 14px;border-radius:20px;border:1px solid var(--border-subtle,#444);"
+        + "background:var(--bg-normal,#18191c);color:var(--header-primary,#fff);cursor:pointer;"
+        + "box-shadow:0 4px 16px rgba(0,0,0,.5);font-size:13px";
+    bubble.addEventListener("click", () => handle.toggle());
+
     const handle: FloatingHandle = {
         close: () => { }, // filled below once we have root+el
         toggle: () => {
             hidden = !hidden;
             el.style.display = hidden ? "none" : "";
+            bubble.style.display = hidden ? "" : "none";
         },
         isMin: () => hidden,
     };
+    const onDblClick = (e: MouseEvent) => {
+        if (!(e.target as HTMLElement)?.closest?.("button")) handle.close();
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") handle.close(); };
     handle.close = () => {
         try { root.unmount(); } catch { /* already gone */ }
         el.remove();
+        bubble.remove();
+        window.removeEventListener("keydown", onKey);
         floating = null;
     };
 
     document.body.appendChild(el);
+    document.body.appendChild(bubble);
+    window.addEventListener("keydown", onKey);
     floating = { root, el, handle };
 
     // header drag handle + controls rendered INSIDE the react tree would need
@@ -390,16 +427,17 @@ export function openGhostFinder() {
     const title = document.createElement("span");
     title.textContent = "Ghost DMs — stays open while you browse";
     const btns = document.createElement("span");
-    const mk = (label: string, titleTxt: string, fn: () => void) => {
+    const mk = (label: string, titleTxt: string, fn: () => void, danger = false) => {
         const b = document.createElement("button");
         b.textContent = label;
         b.title = titleTxt;
-        b.style.cssText = "margin-left:6px;background:none;border:none;color:inherit;font-size:14px;cursor:pointer";
+        b.style.cssText = "margin-left:6px;width:26px;height:26px;border-radius:6px;border:1px solid var(--border-subtle,#444);"
+            + "background:" + (danger ? "#c0392b" : "rgba(255,255,255,.08)") + ";color:#fff;font-size:14px;line-height:1;cursor:pointer";
         b.addEventListener("click", fn);
         btns.appendChild(b);
     };
-    mk("—", "hide (click the bar icon to bring back)", () => handle.toggle());
-    mk("✕", "close", () => handle.close());
+    mk("–", "hide panel (a small reopen bubble appears bottom-right; the ghost bar icon also brings it back)", () => handle.toggle());
+    mk("✕", "close Ghost DMs (double-click the title bar does this too)", () => handle.close(), true);
     bar.appendChild(title);
     bar.appendChild(btns);
     el.insertBefore(bar, el.firstChild);
@@ -409,9 +447,10 @@ export function openGhostFinder() {
     el.appendChild(content);
     root.render(<Finder />);
 
+    bar.addEventListener("dblclick", onDblClick);
     const cleanup = makeDraggable(el, bar);
     const origClose = handle.close;
-    handle.close = () => { cleanup(); origClose(); };
+    handle.close = () => { cleanup(); bar.removeEventListener("dblclick", onDblClick); origClose(); };
 }
 
 const panelStyle: CSSProperties = {
