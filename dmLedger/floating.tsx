@@ -26,7 +26,7 @@ interface FloatingOpts {
 }
 
 const FLOAT_Z = 2147483000; // above Discord's modals/menus
-const MIN_W = 320, MIN_H = 200;
+const MIN_W = 560, MIN_H = 200; // action buttons (open/restore/copy/forget) need this room side-by-side
 
 // This renderer context may have NO usable localStorage: the global can be
 // absent entirely (bare `localStorage` -> ReferenceError; seen live in
@@ -63,6 +63,9 @@ const store = {
     },
 };
 
+// shared with the browser UI (last package path etc.) — NEVER bare localStorage
+export const safeStore = store;
+
 let floating: { root: any; el: HTMLElement; handle: FloatingHandle; } | null = null;
 
 export function closeFloating(): boolean {
@@ -94,7 +97,7 @@ export function openFloating(opts: FloatingOpts): boolean {
     const el = document.createElement("div") as HTMLElement;
     el.style.cssText = [
         "position:fixed", "top:80px", "right:24px",
-        "width:" + saved(widthKey, MIN_W, 460, winW) + "px",
+        "width:" + saved(widthKey, MIN_W, 680, winW) + "px",
         "display:flex", "flex-direction:column", "z-index:" + FLOAT_Z,
         "background:var(--bg-normal, #18191c)", "border:1px solid var(--border-subtle, #333)",
         "border-radius:10px", "box-shadow:0 8px 30px rgba(0,0,0,.6)", "padding:0",

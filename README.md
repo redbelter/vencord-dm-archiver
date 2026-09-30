@@ -118,7 +118,11 @@ Copy the `ghostDms/` folder into `Vencord/src/userplugins/ghostDms/` and build t
 
 # DmLedger (also in this repo: `dmLedger/`, plus a `ledger.ts` copy inside each plugin)
 
-The memory these three plugins were missing — and now its own browser. Discord's live DM list caps at roughly 100 channels, and it's *sticky* — the conversations you chat in most never page out, so restored/hidden DMs only surface a few at a time. DmLedger fixes the client side of that: it **permanently records every DM partner (user id + channel id + display name) this client ever sees**, in Vencord's own IndexedDB (DataStore). Nothing leaves your machine; it never sends, deletes, or restores anything.
+The memory these three plugins were missing — and now its own browser. Discord's live DM list caps at roughly 100 channels, and it's *sticky* — the conversations you chat in most never page out, so restored/hidden DMs only surface a few at a time. DmLedger fixes the client side of that: it **permanently records every DM partner (user id + channel id + display name) this client ever sees**, in Vencord's own IndexedDB (DataStore). Nothing leaves your machine, and it never *sends* anything.
+The `/dm-ledger` browser window **can** restore/open channels or forget rows — only when you click it.
+It also absorbs GhostDms's package import: point it at your unzipped Discord data export (the
+folder picker remembers the path), and every DM conversation the package contains becomes a
+permanent roster row (read-only on the package; group DMs are reported and skipped).
 
 Copy the `dmLedger/` folder into `Vencord/src/userplugins/dmLedger/` and build like the others. The other three plugins each carry their own copy of `ledger.ts` (same shared storage), so **they work with or without DmLedger installed** — install DmLedger to also capture every DM you *send in*, passively, at send time.
 
@@ -129,6 +133,22 @@ Copy the `dmLedger/` folder into `Vencord/src/userplugins/dmLedger/` and build l
 - 🧹 Forget one partner or wipe the whole roster via `ledgerForget(id)` / `ledgerWipe()` in the console (or the Forget button); clearing your Discord app data also clears it
 
 ---
+
+### The browser (`/dm-ledger`, or the search icon in any DM's chat bar)
+
+A floating, resizable window over the roster. Every button has a hover tooltip;
+short version:
+
+- **Open** — jumps to the DM; if Discord dropped the channel from your list it first re-opens it (same channel, history intact)
+- **Restore** — asks Discord to put the DM back in your sidebar (create-or-get; creates nothing new, sends nothing)
+- **Copy** — this partner's user id + channel id as JSON on your clipboard
+- **Forget** — deletes only the ledger row; nothing on Discord is touched
+- **Sweep live** — one API call that records Discord's current DM list into the roster
+- **Import package** — reads your unzipped "Request all my Data" export and remembers *every* DM it contains, including ones hidden from the live list (the same scanner GhostDms uses; runs here too)
+- Filters **All / Hidden / Unnamed**, search over name, user id, channel id, or source; batch restore (~1/s paced, Stop works) and name resolve (~1.1 s paced); **Export JSON** copies the whole roster
+
+Once your package is imported, the browser covers day-to-day use of GhostDms;
+GhostDms itself stays useful for finding people you never DM'd (deep server-roster search).
 
 ## Notes & caveats
 

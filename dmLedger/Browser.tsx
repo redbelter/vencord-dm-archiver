@@ -28,8 +28,67 @@ import {
     useState,
 } from "@webpack/common";
 
-import { closeFloating, openFloating } from "./floating";
+import { closeFloating, openFloating, safeStore } from "./floating";
 import { type LedgerDm, ledgerDmCount, ledgerDms, ledgerForget, ledgerNameCount, ledgerRefresh, recordDm, recordName } from "./ledger";
+import type { PackageScan } from "./native";
+
+// native (main-process) bridge: reads a Discord data-package folder — the ONE
+// source that lists every DM you ever had, even ones never opened since
+// (Settings → Privacy & Safety → Request all my Data, then unzip).
+// Hidden on web builds (no native.ts there).
+const Native = (typeof VencordNative !== "undefined" ? VencordNative : undefined)?.pluginHelpers?.DmLedger as
+    | { scanPackage(path: string): Promise<PackageScan>; chooseFolder(): Promise<{ path: string | null; } | string | null>; }
+    | undefined;
+
+const PKG_PATH_KEY = "DmLedgerLastPkgPath";
+
+// pacing knobs (defaults match Discord's real budgets; the harness zeroes them
+// so tests don't sleep through hundreds of seconds)
+export function namePaceMs(): number {
+    const v = parseInt(safeStore.getItem("DmLedgerNamePace") ?? "", 10);
+    return Number.isFinite(v) && v >= 0 && v <= 1100 ? v : 1100;
+}
+export function restorePaceMs(): number {
+    const v = parseInt(safeStore.getItem("DmLedgerRestorePace") ?? "", 10);
+    return Number.isFinite(v) && v >= 0 && v <= 750 ? v : 750;
+}
+
+export interface ImportSummary {
+    imported: number;
+    newPartners: number;
+    groupDms: number;
+    named: number;
+}
+
+/**
+ * Fold a package scan into the ledger. Read-only on the package; every DM
+ * partner becomes a permanent record (channel id included — it survives even
+ * when Discord stops listing the channel). Returns honest counts.
+ */
+export function mergeScanIntoLedger(scan: PackageScan): ImportSummary {
+    const friendSet = new Set(scan.friends ?? []);
+    let newPartners = 0, named = 0;
+    for (const dm of scan.dms ?? []) {
+        const known = ledgerDms().some(d => d.userId === dm.recipientId);
+        if (!known) newPartners++;
+        const name = dm.name ?? scan.names?.[dm.recipientId];
+        if (name) named++;
+        recordDm({
+            userId: dm.recipientId,
+            channelId: dm.channelId,
+            username: name,
+            isFriend: friendSet.has(dm.recipientId),
+            source: "package",
+        });
+        if (name) recordName({ userId: dm.recipientId, username: name });
+    }
+    return {
+        imported: scan.dms?.length ?? 0,
+        newPartners,
+        groupDms: scan.groupDms ?? 0,
+        named,
+    };
+}
 
 // ─── pure helpers (harness-tested) ───────────────────────────────────────────
 
@@ -167,6 +226,9 @@ interface Busy { kind: "restore" | "resolve" | "sweep"; done: number; total: num
 
 function LedgerBrowser({ close }: { close: () => void; }) {
     const [rows, setRows] = useState<LedgerDm[]>(ledgerDms());
+    const [pkgPath, setPkgPath] = useState(() => safeStore.getItem(PKG_PATH_KEY) ?? "");
+    const [pkgBusy, setPkgBusy] = useState(false);
+    const [pkgMsg, setPkgMsg] = useState("");
     const [query, setQuery] = useState("");
     const [filter, setFilter] = useState<LedgerFilter>("all");
     const [sel, setSel] = useState<Set<string>>(new Set());
@@ -252,7 +314,7 @@ function LedgerBrowser({ close }: { close: () => void; }) {
                 failed++;
             }
             setBusy({ kind: "restore", done: i + 1, total: ids.length });
-            if (i < ids.length - 1) await new Promise(r => setTimeout(r, 750)); // Discord's POST budget is ~1/s
+            if (i < ids.length - 1 && restorePaceMs()) await new Promise(r => setTimeout(r, restorePaceMs())); // Discord's POST budget is ~1/s
         }
         setBusy(null);
         refresh();
@@ -285,7 +347,7 @@ function LedgerBrowser({ close }: { close: () => void; }) {
             if (name) { found++; recordDm({ userId: id, username: name, source: "lookup" }); }
             else unknown++;
             setBusy({ kind: "resolve", done: i + 1, total: ids.length });
-            if (i < ids.length - 1) await new Promise(r => setTimeout(r, 1100)); // profile endpoint ~10/10s
+            if (i < ids.length - 1 && namePaceMs()) await new Promise(r => setTimeout(r, namePaceMs())); // profile endpoint ~10/10s
         }
         setBusy(null);
         refresh();
@@ -301,6 +363,44 @@ function LedgerBrowser({ close }: { close: () => void; }) {
         setBusy(null);
         refresh();
         toast(`Swept live DM list — ${n} recorded`);
+    };
+
+    const importPackage = async (usePicker = false) => {
+        if (!Native || busy || pkgBusy) return;
+        setPkgBusy(true);
+        setPkgMsg("");
+        try {
+            let path = pkgPath.trim();
+            if (usePicker) {
+                const picked: any = await Native.chooseFolder();
+                const chosen = typeof picked === "string" ? picked : picked?.path;
+                if (!chosen) { setPkgBusy(false); return; }
+                setPkgPath(chosen);
+                safeStore.setItem(PKG_PATH_KEY, chosen);
+                path = chosen;
+            }
+            const scan = await Native.scanPackage(path);
+            if (!scan.ok) {
+                setPkgMsg(`❌ ${scan.error}`);
+                return;
+            }
+            const sum = mergeScanIntoLedger(scan);
+            safeStore.setItem(PKG_PATH_KEY, path);
+            refresh();
+            setPkgMsg(
+                `imported ${sum.imported} DM conversation(s) — ${sum.newPartners} new partner(s) now remembered permanently`
+                + (sum.groupDms ? ` · ${sum.groupDms} group DM(s) skipped (not openable by id alone)` : "")
+                + ` · ${sum.named} named from the package`,
+            );
+            // package omits profiles: any rows still named "user <id>" get a
+            // paced live lookup, exactly like GhostDms does after import
+            const unnamed = ledgerDms().filter(isUnnamed).map(d => d.userId);
+            if (unnamed.length) void resolveNames(unnamed);
+        } catch (e: any) {
+            setPkgMsg(`❌ ${String(e?.message ?? e)}`);
+        } finally {
+            setPkgBusy(false);
+        }
     };
 
     const doExport = () => {
@@ -320,8 +420,14 @@ function LedgerBrowser({ close }: { close: () => void; }) {
     const filterBtn = (key: LedgerFilter, label: string) => (
         <Button
             key={key}
+            size="xs"
             variant={filter === key ? "primary" : "secondary"}
             disabled={Boolean(busy)}
+            title={
+                key === "all" ? "Show everyone in the ledger"
+                    : key === "hidden" ? "Only DM partners Discord won't show you normally (non-friends / channels it dropped from your list)"
+                        : "Rows with no known display name yet — use Resolve names to look them up"
+            }
             onClick={() => setFilter(key)}
         >
             {label}
@@ -335,6 +441,41 @@ function LedgerBrowser({ close }: { close: () => void; }) {
                 {`${ledgerDmCount()} partner(s) remembered · ${hiddenCount} hidden · ${unnamedCount} unnamed · ${ledgerNameCount()} names`}
             </Text>
 
+            {Native && (
+                <div style={{ marginTop: 4 }}>
+                    <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                        <div style={{ flex: 1 }}>
+                            <TextInput
+                                value={pkgPath}
+                                placeholder="C:\\Users\\you\\Downloads\\discord-package (unzipped Request-Data folder)"
+                                onChange={(v: string) => setPkgPath(v)}
+                            />
+                        </div>
+                        <Button
+                            size="xs"
+                            variant="secondary"
+                            disabled={pkgBusy || Boolean(busy)}
+                            title="Picks the extracted data-package folder with a folder browser"
+                            onClick={() => void importPackage(true)}
+                        >
+                            Browse…
+                        </Button>
+                        <Button
+                            size="xs"
+                            variant="primary"
+                            disabled={pkgBusy || Boolean(busy) || !pkgPath.trim()}
+                            title="Reads your Discord data export (Settings → Privacy & Safety → Request all my Data, then UNZIP it) and permanently remembers every DM conversation it contains — including ones Discord has hidden from you. Read-only: never writes to the package, never sends anything"
+                            onClick={() => void importPackage(false)}
+                        >
+                            Import package
+                        </Button>
+                    </div>
+                    {pkgMsg && (
+                        <Text variant="text-xs/normal">{pkgMsg}</Text>
+                    )}
+                </div>
+            )}
+
             <div style={{ marginTop: 8, display: "flex", gap: "6px", alignItems: "center" }}>
                 <div style={{ flex: 1 }}>
                     <TextInput
@@ -345,14 +486,18 @@ function LedgerBrowser({ close }: { close: () => void; }) {
                 </div>
             </div>
 
-            <div style={{ marginTop: 8 }}>
+            <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}>
                 {filterBtn("all", `All (${rows.length})`)}
                 {filterBtn("hidden", `Hidden (${hiddenCount})`)}
                 {filterBtn("unnamed", `Unnamed (${unnamedCount})`)}
-                <Button variant="secondary" disabled={Boolean(busy)} onClick={() => void sweepNow()}>
+                <Button size="xs" variant="secondary" disabled={Boolean(busy)} title="Records every DM currently on Discord's live list into the ledger (one API call) — keeps the roster fresh"
+                    onClick={() => void sweepNow()}
+                >
                     Sweep live
                 </Button>
-                <Button variant="secondary" disabled={Boolean(busy)} onClick={doExport}>
+                <Button size="xs" variant="secondary" disabled={Boolean(busy)} title="Copy the entire roster (ids, names, friendship, seen-dates) as JSON to your clipboard — your data, no upload"
+                    onClick={doExport}
+                >
                     Export JSON
                 </Button>
             </div>
@@ -360,32 +505,34 @@ function LedgerBrowser({ close }: { close: () => void; }) {
             {busy && (
                 <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: "8px" }}>
                     <Text variant="text-sm/normal">{`${busy.kind === "resolve" ? "resolving" : busy.kind === "sweep" ? "sweeping" : "restoring"} ${busy.done}/${busy.total}…`}</Text>
-                    <Button variant="dangerPrimary" onClick={() => (stopFlag.stop = true)}>
+                    <Button size="xs" variant="dangerPrimary" title="Halt the current batch (already-completed items stay done)" onClick={() => (stopFlag.stop = true)}>
                         Stop
                     </Button>
                 </div>
             )}
 
             {rowIds.length > 0 && (
-                <div style={{ marginTop: 8 }}>
-                    <Button variant="secondary" disabled={Boolean(busy)} onClick={() => selectMany(rowIds, true)}>
+                <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}>
+                    <Button size="xs" variant="secondary" disabled={Boolean(busy)} title="Select every row visible right now (after your search/filter)" onClick={() => selectMany(rowIds, true)}>
                         Select all ({rowIds.length})
                     </Button>
-                    <Button variant="secondary" disabled={Boolean(busy)} onClick={() => setSel(new Set())}>
+                    <Button size="xs" variant="secondary" disabled={Boolean(busy)} title="Clear the selection" onClick={() => setSel(new Set())}>
                         Clear
                     </Button>
                     {sel.size > 0 && [
                             <Text key="c" variant="text-xs/normal">{`${sel.size} selected`}</Text>,
-                            <Button key="r" variant="primary" disabled={Boolean(busy)} onClick={() => void restoreSelected()}>
+                            <Button key="r" size="xs" variant="primary" disabled={Boolean(busy)} title="Ask Discord to reopen ALL selected DMs (paced ~1/sec so you don't get rate-limited; Stop works mid-run)" onClick={() => void restoreSelected()}>
                                 Restore {sel.size}
                             </Button>,
-                            <Button key="n" variant="secondary" disabled={Boolean(busy)} onClick={() => void resolveNames([...sel])}>
+                            <Button key="n" size="xs" variant="secondary" disabled={Boolean(busy)} title="Look up real display names for selected rows via Discord (paced ~1.1s apart; rows that stay 'user <id>' are deleted/blocked accounts)" onClick={() => void resolveNames([...sel])}>
                                 Resolve names {sel.size}
                             </Button>,
                             <Button
                                 key="f"
+                                size="xs"
                                 variant="dangerPrimary"
                                 disabled={Boolean(busy)}
+                                title="Delete these rows from the remembered roster ONLY — nothing on Discord is touched"
                                 onClick={() => { for (const id of [...sel]) ledgerForget(id); setSel(new Set()); refresh(); }}
                             >
                                 Forget {sel.size}
@@ -415,23 +562,23 @@ function LedgerBrowser({ close }: { close: () => void; }) {
                                     + (isUnnamed(row) && snowflakeDate(row.userId) ? ` · acct ${snowflakeDate(row.userId)}` : "")}
                             </div>
                         </div>
-                        <Button variant="secondary" disabled={Boolean(busy)} onClick={() => void doOpen(row)}>
+                        <Button size="xs" variant="secondary" disabled={Boolean(busy)} title="Opens this DM — if your list no longer has the channel, it first asks Discord to reopen it (same channel, history intact)" onClick={() => void doOpen(row)}>
                             Open
                         </Button>
-                        <Button variant="secondary" disabled={Boolean(busy)} onClick={() => void doRestoreOne(row)}>
+                        <Button size="xs" variant="secondary" disabled={Boolean(busy)} title="Asks Discord to put this DM back in your sidebar channel list (create-or-get: reopens the ORIGINAL channel — nothing new is created, nothing is sent)" onClick={() => void doRestoreOne(row)}>
                             Restore
                         </Button>
-                        <Button variant="secondary" disabled={Boolean(busy)} onClick={() => doCopy(row)}>
+                        <Button size="xs" variant="secondary" disabled={Boolean(busy)} title="Copies this partner's user id + channel id as JSON to your clipboard (paste it into other tools/plugins)" onClick={() => doCopy(row)}>
                             Copy
                         </Button>
-                        <Button variant="secondary" disabled={Boolean(busy)} onClick={() => doForget(row)}>
+                        <Button size="xs" variant="secondary" disabled={Boolean(busy)} title="Deletes ONLY this row from the remembered roster — never deletes anything on Discord" onClick={() => doForget(row)}>
                             Forget
                         </Button>
                     </div>
                 ))}
                 {!visible.length && (
                     <Text variant="text-sm/normal">
-                        {rows.length ? "No rows match the current search/filter." : "The ledger is empty so far — DM someone, run 'Sweep live', or use GhostDms/msgPurge and records will accumulate."}
+                        {rows.length ? "No rows match the current search/filter." : "The ledger is empty so far — DM someone, hit 'Sweep live', import your Discord data package above, or just use msgPurge/dmArchiver and records will accumulate here automatically."}
                     </Text>
                 )}
             </div>
@@ -442,7 +589,7 @@ function LedgerBrowser({ close }: { close: () => void; }) {
                 </Text>
             </div>
             <div style={{ marginTop: 6 }}>
-                <Button variant="secondary" onClick={close}>
+                <Button size="xs" variant="secondary" title="Close this window (the ledger keeps recording in the background)" onClick={close}>
                     Close
                 </Button>
             </div>
