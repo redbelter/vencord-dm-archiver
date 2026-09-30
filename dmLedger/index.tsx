@@ -18,17 +18,25 @@
 //
 // Read-only by nature: it never sends, deletes, or restores anything.
 
-import { definePluginSettings } from "@api/Settings";
+import { ChatBarButton, ChatBarButtonFactory } from "@api/ChatButtons";
 import { addMessagePreSendListener, removeMessagePreSendListener } from "@api/MessageEvents";
+import { definePluginSettings } from "@api/Settings";
+import { SearchIcon } from "@components/Icons";
 import { Logger } from "@utils/Logger";
 import definePlugin, { OptionType } from "@utils/types";
 import { ChannelStore, RestAPI, UserStore } from "@webpack/common";
 
+import { openLedgerBrowser } from "./Browser";
 import { ledgerDmCount, ledgerNameCount, ledgerReady, recordDm, recordName } from "./ledger";
 
 const log = new Logger("DmLedger");
 
 const settings = definePluginSettings({
+    showChatBarEntry: {
+        type: OptionType.BOOLEAN,
+        description: "Show the Ledger button in the chat bar.",
+        default: true,
+    },
     captureOnStart: {
         type: OptionType.BOOLEAN,
         description: "Sweep the live DM list + user cache once at startup (one REST call).",
@@ -102,6 +110,18 @@ const onSend = (channelId: string, messageObj: any) => {
     } catch { /* never break someone's message send over bookkeeping */ }
 };
 
+const LedgerButton: ChatBarButtonFactory = ({ isMainChat }) => {
+    if (!isMainChat || !settings.store.showChatBarEntry) return null;
+    return (
+        <ChatBarButton
+            tooltip="DmLedger — everyone you've ever DM'd (even beyond Discord's list)"
+            onClick={() => openLedgerBrowser()}
+        >
+            <SearchIcon />
+        </ChatBarButton>
+    );
+};
+
 export default definePlugin({
     name: "DmLedger",
     description: "Permanently remembers every DM partner and display name this client has seen (client-side IndexedDB), so GhostDms / DMArchiver / MsgPurge can reach DMs Discord's ~100-recent window hides.",
@@ -119,4 +139,17 @@ export default definePlugin({
     stop() {
         removeMessagePreSendListener(onSend);
     },
+
+    chatBarButton: {
+        icon: SearchIcon,
+        render: LedgerButton,
+    },
+
+    commands: [{
+        name: "dm-ledger",
+        description: "Browse the permanent DM roster — everyone you've ever DM'd, beyond Discord's ~100 list",
+        execute: () => {
+            openLedgerBrowser();
+        },
+    }],
 });

@@ -118,14 +118,15 @@ Copy the `ghostDms/` folder into `Vencord/src/userplugins/ghostDms/` and build t
 
 # DmLedger (also in this repo: `dmLedger/`, plus a `ledger.ts` copy inside each plugin)
 
-The memory these three plugins were missing. Discord's live DM list caps at roughly 100 channels, and it's *sticky* — the conversations you chat in most never page out, so restored/hidden DMs only surface a few at a time. DmLedger fixes the client side of that: it **permanently records every DM partner (user id + channel id + display name) this client ever sees**, in Vencord's own IndexedDB (DataStore). Nothing leaves your machine; it never sends, deletes, or restores anything.
+The memory these three plugins were missing — and now its own browser. Discord's live DM list caps at roughly 100 channels, and it's *sticky* — the conversations you chat in most never page out, so restored/hidden DMs only surface a few at a time. DmLedger fixes the client side of that: it **permanently records every DM partner (user id + channel id + display name) this client ever sees**, in Vencord's own IndexedDB (DataStore). Nothing leaves your machine; it never sends, deletes, or restores anything.
 
 Copy the `dmLedger/` folder into `Vencord/src/userplugins/dmLedger/` and build like the others. The other three plugins each carry their own copy of `ledger.ts` (same shared storage), so **they work with or without DmLedger installed** — install DmLedger to also capture every DM you *send in*, passively, at send time.
 
 - 🧠 **Survives restarts and the eviction window** — partners whose channel Discord no longer lists anywhere stay in the roster forever (first-seen/last-seen, friendship-at-record-time, which plugin saw them)
 - ✍️ **Passive capture** — every DM message you send records its recipient instantly; a startup sweep records the current live DM list; package imports, restores, and lookups in the other plugins all contribute records too
 - 🔗 **All three consumers read it**: **GhostDms** lists remembered partners tagged "remembered" (Restore recreates the channel), **DMArchiver**'s export map includes ledger-only DMs (so "export everything" isn't capped by Discord's ~100 list anymore), **MsgPurge**'s picker and explicit channel-id targets resolve through it
-- 🧹 Forget one partner or wipe the whole roster via `ledgerForget(id)` / `ledgerWipe()` in the console; clearing your Discord app data also clears it
+- 🪟 **Browse it directly** — `/dm-ledger` or the 🔍 button in the DM chat bar opens the same floating window: search everyone by name/id/channel-id, filters (All / Hidden / Unnamed), per-row **Open** (routes instantly for known channels, create-or-get for the ones Discord no longer lists), **Restore**, **Copy** ids, **Forget**; batch **Select all → Restore / Resolve names / Forget** with paced requests, progress and Stop; **Sweep live** to record the current DM list in one shot; **Export JSON** copies the entire roster (ids, names, friendship, first/last seen) to your clipboard for your own records. Once you've imported + restored everything once, this window alone finds and opens any past DM — the GhostDms package import stays available for that first-time backfill (and deep server-roster search to find never-DM'd people).
+- 🧹 Forget one partner or wipe the whole roster via `ledgerForget(id)` / `ledgerWipe()` in the console (or the Forget button); clearing your Discord app data also clears it
 
 ---
 

@@ -24,17 +24,17 @@ const KEY_PREFIX = "DmLedger.v1.";
 export interface LedgerDm {
     userId: string;
     channelId: string;
-    username?: string;    // best-known name at record time
-    isFriend?: boolean;   // known-friend at record time (drives the ghost tag later)
-    firstSeen: number;    // epoch ms
-    lastSeen: number;     // epoch ms
-    source: string;       // "live" | "sent" | "package" | "restore" | "cache" | "lookup"
+    username?: string; // best-known name at record time
+    isFriend?: boolean; // known-friend at record time (drives the ghost tag later)
+    firstSeen: number; // epoch ms
+    lastSeen: number; // epoch ms
+    source: string; // "live" | "sent" | "package" | "restore" | "cache" | "lookup"
 }
 
 export interface LedgerName {
     userId: string;
     username?: string;
-    globalName?: string;  // display name — what Discord's UI actually shows
+    globalName?: string; // display name — what Discord's UI actually shows
     lastSeen: number;
 }
 
