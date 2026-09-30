@@ -12,6 +12,7 @@ import { Logger } from "@utils/Logger";
 import type { PluginNative } from "@utils/types";
 import { EmbedJSON, MessageAttachment, MessageJSON } from "@vencord/discord-types";
 import { ChannelStore, Constants, MessageStore, RestAPI, UserStore } from "@webpack/common";
+import { ledgerDms, ledgerNameFor, ledgerRefresh, recordDm, recordName } from "./ledger";
 
 import {
     formatSkippedMediaReport,
@@ -223,8 +224,17 @@ export async function collectDmNames(): Promise<Map<string, string>> {
     const names = new Map<string, string>();
     for (const ch of await fetchAllDmChannels()) {
         const uid = dmRecipientId(ch);
-        const name = ch.recipients?.[0]?.username ?? ch.recipients?.[0]?.global_name;
+        const rec: any = ch.recipients?.[0];
+        const name = rec?.global_name ?? rec?.username;
         if (uid && name) names.set(uid, name);
+        if (uid && rec?.id) recordName({ userId: uid, username: rec.username, globalName: rec.global_name });
+    }
+    // remembered names cover partners the live list dropped
+    for (const led of ledgerDms()) {
+        if (!names.has(led.userId)) {
+            const nm = led.username ?? ledgerNameFor(led.userId);
+            if (nm) names.set(led.userId, nm);
+        }
     }
     return names;
 }
@@ -233,13 +243,24 @@ export async function collectDmUserChannels(): Promise<Map<string, string>> {
     const perUser = new Map<string, string>();
     for (const ch of await fetchAllDmChannels()) {
         const uid = dmRecipientId(ch);
-        if (uid && ch.id) perUser.set(uid, ch.id);
+        if (uid && ch.id) {
+            perUser.set(uid, ch.id);
+            // feed the permanent roster while we're here
+            const rec: any = ch.recipients?.[0];
+            recordDm({ userId: uid, channelId: String(ch.id), username: rec?.global_name ?? rec?.username, source: "live" });
+        }
     }
     for (const uid of ChannelStore.getDMUserIds() ?? []) {
         if (!perUser.has(uid)) {
             const chId = ChannelStore.getDMFromUserId(uid);
             if (chId) perUser.set(uid, chId);
         }
+    }
+    // the client-side ledger outlives Discord's ~100-DM window: partners whose
+    // channel no longer appears in ANY live enumeration still have a known id
+    await ledgerRefresh().catch(() => undefined);
+    for (const led of ledgerDms()) {
+        if (led.channelId && !perUser.has(led.userId)) perUser.set(led.userId, led.channelId);
     }
     return perUser;
 }

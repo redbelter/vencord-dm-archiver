@@ -10,6 +10,7 @@ Now with a full **archive dashboard**: searchable DM list, multi-select, live ex
 - 📄 **Text transcripts** — full DM history saved as formatted `.txt`
 - 🔎 **Audit** — list every DM user, flag the ones you're *not* friends with
 - 🗑️ **Self-deletion** — batch-delete *your own* messages (rate-limited, retry, peer messages never touched); double-gated behind a setting
+- 🧠 **Export map includes ledger-known DMs** — DM partners remembered by [DmLedger](#dmledger-also-in-this-repo-dmledger-plus-a-ledgerts-copy-inside-each-plugin) whose channels fell out of Discord's ~100-channel list are still resolved to their channel id and exported (the id outlives the list)
 - 🎛️ **Dashboard UI** — open with `/dm-dashboard` or the folder button in the DM chat bar; **floating window** (drag/resize/persist, – hides mid-export without killing it)
 - 🚫 Optional Quest-UI hiding
 - ⏯️ Resume-safe: existing files are skipped, skipped media gets a written report
@@ -45,6 +46,7 @@ A **separate Vencord plugin** for rate-limited deletion of **your own** messages
 - 🛡️ **Own messages only** — the engine filters by your user ID at scan time; peer messages are never queued, let alone deleted
 - 👥 **DM sweep options** — current channel, every DM, and "skip friends" filter
 - ⚡ **429-aware** — on rate-limit responses it cools down (60s+backoff) and retries instead of hammering
+- 🧠 **Sees beyond Discord's ~100-DM window** — if [DmLedger](#dmledger-also-in-this-repo-dmledger-plus-a-ledgerts-copy-inside-each-plugin) (or a previous GhostDms session) remembers a DM the live list dropped, the picker lists it and explicit channel-id targets resolve through the ledger — deleting only needs the channel id
 - 🪟 **Floating window, not a modal** — the control panel is the same draggable/resizable mini-window family as GhostDms: navigate your chats while it watches, hide with – and the purge keeps running in the background, **Open** in the DM picker navigates without closing the panel
 
 ## Usage
@@ -110,6 +112,20 @@ Copy the `ghostDms/` folder into `Vencord/src/userplugins/ghostDms/` and build t
 - 📦 **Import from your Discord data package** — in Discord, *Settings → Privacy & Safety → Request all my Data*, unzip the result, then point the import at the extracted folder. It reads `Messages/<id>/channel.json` and enumerates **every DM you have ever had** — the full history, including DM channels the live API no longer returns. Names resolve from the package itself (relationships → channel index → member dumps); friend tags merge live + export-time relationships; group DMs are counted and skipped (they're not openable by recipient id). One-click **Open** on a package-only row restores the channel via create-or-get. Read-only — it never writes to the package.
 - **Open by user ID** fallback (behind a link) if you already know the snowflake
 - Union source: REST DM list **+** the local ChannelStore cache (sometimes holds channels REST omits) **+** your imported data package
+- 🧠 Rows remembered by [DmLedger](#dmledger-also-in-this-repo-dmledger-plus-a-ledgerts-copy-inside-each-plugin) show tagged "· remembered" — Restore recreates those channels via create-or-get exactly like package-only rows
+
+---
+
+# DmLedger (also in this repo: `dmLedger/`, plus a `ledger.ts` copy inside each plugin)
+
+The memory these three plugins were missing. Discord's live DM list caps at roughly 100 channels, and it's *sticky* — the conversations you chat in most never page out, so restored/hidden DMs only surface a few at a time. DmLedger fixes the client side of that: it **permanently records every DM partner (user id + channel id + display name) this client ever sees**, in Vencord's own IndexedDB (DataStore). Nothing leaves your machine; it never sends, deletes, or restores anything.
+
+Copy the `dmLedger/` folder into `Vencord/src/userplugins/dmLedger/` and build like the others. The other three plugins each carry their own copy of `ledger.ts` (same shared storage), so **they work with or without DmLedger installed** — install DmLedger to also capture every DM you *send in*, passively, at send time.
+
+- 🧠 **Survives restarts and the eviction window** — partners whose channel Discord no longer lists anywhere stay in the roster forever (first-seen/last-seen, friendship-at-record-time, which plugin saw them)
+- ✍️ **Passive capture** — every DM message you send records its recipient instantly; a startup sweep records the current live DM list; package imports, restores, and lookups in the other plugins all contribute records too
+- 🔗 **All three consumers read it**: **GhostDms** lists remembered partners tagged "remembered" (Restore recreates the channel), **DMArchiver**'s export map includes ledger-only DMs (so "export everything" isn't capped by Discord's ~100 list anymore), **MsgPurge**'s picker and explicit channel-id targets resolve through it
+- 🧹 Forget one partner or wipe the whole roster via `ledgerForget(id)` / `ledgerWipe()` in the console; clearing your Discord app data also clears it
 
 ---
 

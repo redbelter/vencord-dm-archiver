@@ -26,6 +26,7 @@ import {
 import type { CSSProperties } from "react";
 
 import type { PackageScan } from "./native";
+import { ledgerGhostDms, ledgerNameFor, ledgerRefresh, recordDm, recordName } from "./ledger";
 
 // native (main-process) bridge; may be unavailable on web builds — the
 // package-import UI hides itself when it is.
@@ -51,6 +52,8 @@ export interface GhostDmRow {
     isFriend: boolean;
     /** true when this row only exists in an imported data package */
     fromPackage?: boolean;
+    /** true when only the client-side ledger remembers this partner */
+    fromLedger?: boolean;
 }
 
 /**
@@ -67,13 +70,22 @@ export function mergePackageRows(live: GhostDmRow[], scan: PackageScan, friendId
     for (const dm of scan.dms ?? []) {
         if (byChannel.has(dm.channelId)) continue;
         byChannel.add(dm.channelId);
-        let username = scan.names?.[dm.recipientId];
+        let username = scan.names?.[dm.recipientId] ?? ledgerNameFor(dm.recipientId);
         if (!username) {
             try {
                 const cu: any = UserStore.getUser(dm.recipientId);
                 username = cu?.globalName ?? cu?.global_name ?? cu?.username;
             } catch { /* cache unavailable */ }
         }
+        // every package partner joins the permanent roster (names/friend status
+        // from the export; the channel id survives even if Discord hides it later)
+        recordDm({
+            userId: dm.recipientId,
+            channelId: dm.channelId,
+            username: username?.startsWith("user ") ? undefined : username,
+            isFriend: friendIds.has(dm.recipientId),
+            source: "package",
+        });
         rows.push({
             channelId: dm.channelId,
             userId: dm.recipientId,
@@ -282,9 +294,11 @@ export async function resolveNamesForIds(
             const cu: any = UserStore.getUser(id);
             name = cu?.globalName ?? cu?.global_name ?? cu?.username;
         } catch { /* cache unavailable */ }
+        if (!name) name = ledgerNameFor(id);
         if (!name) {
             const u = await fetchUserLite(id);
             name = u?.global_name ?? u?.username;
+            if (u?.id) recordName({ userId: id, username: u.username, globalName: u.global_name }); // remember for next time
         }
         if (name) names[id] = name;
         opts.onProgress?.(i + 1, userIds.length);
@@ -311,7 +325,9 @@ export async function batchRestoreDms(
     for (let i = 0; i < userIds.length; i++) {
         if (opts.stop.stop) break;
         try {
-            opened.push((await resolveDmByUserId(userIds[i])).channelId);
+            const { channelId, recipientName } = await resolveDmByUserId(userIds[i]);
+            opened.push(channelId);
+            recordDm({ userId: userIds[i], channelId, username: recipientName, source: "restore" });
         } catch (e: any) {
             if (e?.status === 429) { rateLimited = true; break; }
             failed.push(userIds[i]);
@@ -329,6 +345,7 @@ export async function batchRestoreDms(
  * (authoritative for unfriended / deleted accounts missing from UserStore).
  */
 export async function listAllDms(): Promise<GhostDmRow[]> {
+    await ledgerRefresh().catch(() => undefined); // records another plugin made since load
     const chRes: any = await RestAPI.get({ url: "/users/@me/channels" });
     const channels: any[] = Array.isArray(chRes?.body) ? chRes.body.filter(c => c?.type === 1) : [];
 
@@ -348,14 +365,18 @@ export async function listAllDms(): Promise<GhostDmRow[]> {
         if (!channelId || !uid || seen.has(channelId)) return;
         seen.add(channelId);
         const user = embedded ?? UserStore.getUser(uid);
+        // display name first (what Discord itself shows everywhere);
+        // auto-generated "user_123456" handles often have a real global_name
+        const name = user?.global_name ?? user?.username ?? ledgerNameFor(uid) ?? `user ${uid}`;
         rows.push({
             channelId,
             userId: uid,
-            // display name first (what Discord itself shows everywhere);
-            // auto-generated "user_123456" handles often have a real global_name
-            username: user?.global_name ?? user?.username ?? `user ${uid}`,
+            username: name,
             isFriend: friendIds.has(uid),
         });
+        // contribute to the permanent client-side roster
+        recordDm({ userId: uid, channelId, username: name === `user ${uid}` ? undefined : name, isFriend: friendIds.has(uid), source: "live" });
+        if (user?.username || user?.global_name) recordName({ userId: uid, username: user?.username, globalName: user?.global_name });
     };
     for (const ch of channels) {
         push(String(ch.id), String(ch.recipient_ids?.[0] ?? ch.recipients?.[0]?.id ?? ""), ch.recipients?.[0]);
@@ -367,6 +388,22 @@ export async function listAllDms(): Promise<GhostDmRow[]> {
             if (chId) push(String(chId), String(uid));
         }
     } catch { /* store unavailable */ }
+    // the ledger remembers partners whose channel fell out of the live ~100
+    // window entirely — surface them too (restore re-creates the channel)
+    try {
+        const knownUsers = new Set(rows.map(r => r.userId));
+        for (const led of ledgerGhostDms()) {
+            if (knownUsers.has(led.userId)) continue;
+            knownUsers.add(led.userId);
+            rows.push({
+                channelId: led.channelId,
+                userId: led.userId,
+                username: led.username ?? ledgerNameFor(led.userId) ?? `user ${led.userId}`,
+                isFriend: false,
+                fromLedger: true,
+            });
+        }
+    } catch { /* ledger unavailable */ }
     rows.sort((a, b) => Number(a.isFriend) - Number(b.isFriend) || a.username.localeCompare(b.username));
     return rows;
 }
@@ -726,6 +763,7 @@ function Finder() {
         try {
             const { channelId, recipientName } = await resolveDmByUserId(id);
             ChannelRouter?.transitionToChannel?.(channelId);
+            recordDm({ userId: id, channelId, username: recipientName, source: "restore" });
             // the response embeds their current profile — fix any placeholder row
             if (recipientName) {
                 setRows(prev => (prev ?? []).map(r2 =>
@@ -872,9 +910,10 @@ function Finder() {
     };
 
     const openDm = (row: GhostDmRow) => {
-        // Package-only channels were never loaded by the client — ask Discord
-        // for the channel via create-or-get (returns the ORIGINAL one).
-        if (row.fromPackage) {
+        // Package-only (and ledger-only) channels were never loaded by the
+        // client — ask Discord for the channel via create-or-get (returns the
+        // ORIGINAL one) instead of routing to a channel id the store lacks.
+        if (row.fromPackage || row.fromLedger) {
             openPersonById(row.userId);
             return;
         }
@@ -1158,6 +1197,7 @@ function Finder() {
                         <Text variant="text-xs/normal" style={{ opacity: 0.6 }}>
                             {row.isFriend ? "friend" : "not friends"}
                             {row.fromPackage ? " · package only" : ""}
+                            {row.fromLedger ? " · remembered" : ""}
                         </Text>
                         <span style={{ opacity: 0.4, fontSize: 11 }}>{row.userId}</span>
                         <Button variant="secondary" size="xs" onClick={() => openDm(row)}>

@@ -7,6 +7,7 @@
 import { Logger } from "@utils/Logger";
 import type { MessageJSON } from "@vencord/discord-types";
 import { Constants, MessageStore, RestAPI, UserStore } from "@webpack/common";
+import { ledgerDms, ledgerGhostDms, ledgerNameFor, ledgerRefresh, recordDm } from "./ledger";
 
 export const log = new Logger("MsgPurge");
 
@@ -396,10 +397,20 @@ export class PurgeEngine {
         if (picked.length) {
             // explicit picker mode: exactly these DMs, no friend filter
             const want = new Set(picked.map(String));
+            const seen = new Set<string>();
             for (const row of await listDms()) {
                 if (!want.has(row.channelId)) continue;
+                seen.add(row.channelId);
                 if (row.channelId === currentChannelId && config.includeCurrentChannel) continue;
                 targets.push({ id: row.channelId, label: row.username });
+            }
+            // channel ids matching no live row (hidden-window DMs): the ledger
+            // may still know who they are — deleting by id needs no live list
+            await ledgerRefresh().catch(() => undefined);
+            for (const id of want) {
+                if (seen.has(id) || id === currentChannelId) continue;
+                const led = ledgerDms().find(l => l.channelId === id);
+                targets.push({ id, label: (led && (led.username ?? ledgerNameFor(led.userId))) ?? "DM" });
             }
         } else if (config.includeDms) {
             const friendIds = config.friendsOnly ? await fetchFriendIds() : new Set<string>();
@@ -588,13 +599,27 @@ export async function listDms(): Promise<DmRow[]> {
         // the channel payload embeds the recipient — authoritative for
         // unfriended / long-gone accounts missing from UserStore
         const user = ch.recipients?.[0] ?? UserStore.getUser(uid);
+        // recipient object is embedded in the channel payload — names still
+        // resolve for unfriended / long-gone accounts missing from UserStore
+        const name = user?.global_name ?? user?.username ?? ledgerNameFor(uid) ?? `user ${uid}`;
         rows.push({
             channelId: String(ch.id),
             userId: uid,
-            // recipient object is embedded in the channel payload — names still
-            // resolve for unfriended / long-gone accounts missing from UserStore
-            username: user?.username ?? user?.global_name ?? `user ${uid}`,
+            username: name,
             isFriend: friendIds.has(uid),
+        });
+        recordDm({ userId: uid, channelId: String(ch.id), username: name === `user ${uid}` ? undefined : name, isFriend: friendIds.has(uid), source: "live" });
+    }
+    // ledger-only partners: DMs Discord's live window no longer lists. The
+    // deleter can still target them by channel id — deleting messages never
+    // needed the channel to be in anyone's list.
+    for (const led of ledgerGhostDms()) {
+        if (rows.some(r => r.userId === led.userId)) continue;
+        rows.push({
+            channelId: led.channelId,
+            userId: led.userId,
+            username: led.username ?? ledgerNameFor(led.userId) ?? `user ${led.userId}`,
+            isFriend: false,
         });
     }
     return rows;
