@@ -115,7 +115,12 @@ export function openFloating(opts: FloatingOpts): boolean {
         close: () => { /* filled below */ },
         toggle: () => {
             hidden = !hidden;
-            el.style.display = hidden ? "none" : "";
+            // NOTE: el.style.display = "" would DELETE the cssText-declared
+            // display:flex (inline-style semantics), and the div falls back to
+            // display:block — the flex column dies, the content div stops being
+            // height-constrained, its scrollbar vanishes and everything
+            // overflows the frame. Always restore the EXPLICIT value.
+            el.style.display = hidden ? "none" : "flex";
         },
     };
     const onDblClick = (e: MouseEvent) => {
@@ -224,7 +229,10 @@ function makeDrag(el: HTMLElement, handleEl: HTMLElement, clamps: Array<() => vo
         clampIntoView(el);
     };
     const onUp = () => { dragging = false; };
-    const onResize = () => clampIntoView(el);
+    const onResize = () => {
+        if (window.innerWidth < 100 || window.innerHeight < 100) return; // minimizing: transient resize with a degenerate viewport — clamping now would strand the panel tiny
+        clampIntoView(el);
+    };
     clamps.push(onResize);
     handleEl.addEventListener("mousedown", onDown);
     window.addEventListener("mousemove", onMove);
@@ -272,6 +280,7 @@ function makeSize(el: HTMLElement, handleEl: HTMLElement, axis: "width" | "heigh
         store.setItem(key, String(Math.round(axis === "width" ? rect.width : rect.height)));
     };
     const onResize = () => {
+        if (window.innerWidth < 100 || window.innerHeight < 100) return; // minimizing: transient resize with a degenerate viewport — clamping now would strand the panel tiny
         const rect = el.getBoundingClientRect();
         if (axis === "width") {
             const w = parseFloat(el.style.width);

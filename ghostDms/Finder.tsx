@@ -472,6 +472,7 @@ function makeResizable(el: HTMLElement, handleEl: HTMLElement) {
         store.setItem(WIDTH_KEY, String(Math.round(el.getBoundingClientRect().width)));
     };
     const onResize = () => {
+        if (window.innerWidth < 100 || window.innerHeight < 100) return; // minimizing: transient resize with a degenerate viewport — clamping now would strand the panel tiny
         const w = parseFloat(el.style.width);
         if (w && w > window.innerWidth) el.style.width = window.innerWidth + "px";
     };
@@ -508,6 +509,7 @@ function makeResizableHeight(el: HTMLElement, handleEl: HTMLElement) {
         store.setItem(HEIGHT_KEY, String(Math.round(el.getBoundingClientRect().height)));
     };
     const onResize = () => {
+        if (window.innerWidth < 100 || window.innerHeight < 100) return; // minimizing: transient resize with a degenerate viewport — clamping now would strand the panel tiny
         const h = parseFloat(el.style.height);
         const { top } = el.getBoundingClientRect();
         if (h && top + h > window.innerHeight) el.style.height = Math.max(200, window.innerHeight - top - 8) + "px";
@@ -543,7 +545,10 @@ function makeDraggable(el: HTMLElement, handleEl: HTMLElement) {
         clampIntoView(el);
     };
     const onUp = () => { dragging = false; };
-    const onResize = () => clampIntoView(el);
+    const onResize = () => {
+        if (window.innerWidth < 100 || window.innerHeight < 100) return; // minimizing: transient resize with a degenerate viewport — clamping now would strand the panel tiny
+        clampIntoView(el);
+    };
     handleEl.addEventListener("mousedown", onDown);
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
@@ -593,7 +598,12 @@ export function openGhostFinder() {
         close: () => { }, // filled below once we have contentRoot+el
         toggle: () => {
             hidden = !hidden;
-            el.style.display = hidden ? "none" : "";
+            // NOTE: el.style.display = "" would DELETE the cssText-declared
+            // display:flex (inline-style semantics), and the div falls back to
+            // display:block — the flex column dies, the content div stops being
+            // height-constrained, its scrollbar vanishes and everything
+            // overflows the frame. Always restore the EXPLICIT value.
+            el.style.display = hidden ? "none" : "flex";
         },
         isMin: () => hidden,
     };
