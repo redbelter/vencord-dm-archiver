@@ -11,10 +11,11 @@
 // every DM partner + display name it ever gets a chance to see, into Vencord's
 // DataStore (IndexedDB), and offers that roster to the other userplugins:
 //
-//   GhostDms    → restore/find partners no live list shows anymore
 //   DMArchiver  → export DMs whose channel left the enumeration window
 //   MsgPurge    → target DMs the deleter otherwise couldn't discover
-//   itself      → passively captures every DM you actually send in
+//   itself      → passively captures every DM you actually send in, and its
+//                 browser (/dm-ledger) does the old GhostDms job: package
+//                 import, deep roster search, restore, forget
 //
 // Read-only by nature: it never sends, deletes, or restores anything.
 
@@ -124,7 +125,7 @@ const LedgerButton: ChatBarButtonFactory = ({ isMainChat }) => {
 
 export default definePlugin({
     name: "DmLedger",
-    description: "Permanently remembers every DM partner and display name this client has seen (client-side IndexedDB), so GhostDms / DMArchiver / MsgPurge can reach DMs Discord's ~100-recent window hides.",
+    description: "Permanently remembers every DM partner and display name this client has seen (client-side IndexedDB), so DMArchiver / MsgPurge / this plugin's own browser can reach DMs Discord's ~100-recent window hides.",
     authors: [{ name: "redbelter", id: 0n /* replace with your Discord snowflake */ }],
     settings,
     tags: ["Utility", "Privacy"],
