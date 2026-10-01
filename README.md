@@ -147,8 +147,10 @@ short version:
 - **Import package** — reads your unzipped "Request all my Data" export and remembers *every* DM it contains, including ones hidden from the live list (the same scanner GhostDms uses; runs here too)
 - Filters **All / Hidden / Unnamed**, search over name, user id, channel id, or source; batch restore (~1/s paced, Stop works) and name resolve (~1.1 s paced); **Export JSON** copies the whole roster
 
-Once your package is imported, the browser covers day-to-day use of GhostDms;
-GhostDms itself stays useful for finding people you never DM'd (deep server-roster search).
+- **Find someone you've NEVER DM'd** — a second search box: local-cache matches show instantly (zero API), **Search all servers** sweeps every server's full member roster server-side (paced, Stop + rate-limit honest), **Open by ID** opens a DM straight from an exact snowflake. Whatever you open gets remembered in the ledger
+
+Once your package is imported, the browser covers essentially everything GhostDms
+did — including its deep server-roster search (ported here as `findPeople.ts`).
 
 ## Notes & caveats
 

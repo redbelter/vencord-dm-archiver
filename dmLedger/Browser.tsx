@@ -28,6 +28,7 @@ import {
     useState,
 } from "@webpack/common";
 
+import { type RosterPerson, searchGuildRosters, searchPeopleCache } from "./findPeople";
 import { closeFloating, openFloating, safeStore } from "./floating";
 import { type LedgerDm, ledgerDmCount, ledgerDms, ledgerForget, ledgerNameCount, ledgerRefresh, recordDm, recordName } from "./ledger";
 import type { PackageScan } from "./native";
@@ -51,6 +52,10 @@ export function namePaceMs(): number {
 export function restorePaceMs(): number {
     const v = parseInt(safeStore.getItem("DmLedgerRestorePace") ?? "", 10);
     return Number.isFinite(v) && v >= 0 && v <= 750 ? v : 750;
+}
+export function rosterPaceMs(): number {
+    const v = parseInt(safeStore.getItem("DmLedgerRosterPace") ?? "", 10);
+    return Number.isFinite(v) && v >= 0 && v <= 150 ? v : 150;
 }
 
 export interface ImportSummary {
@@ -229,6 +234,11 @@ function LedgerBrowser({ close }: { close: () => void; }) {
     const [pkgPath, setPkgPath] = useState(() => safeStore.getItem(PKG_PATH_KEY) ?? "");
     const [pkgBusy, setPkgBusy] = useState(false);
     const [pkgMsg, setPkgMsg] = useState("");
+    const [personQuery, setPersonQuery] = useState("");
+    const [rosterMatches, setRosterMatches] = useState<RosterPerson[]>([]);
+    const [rosterText, setRosterText] = useState("");
+    const [rosterBusy, setRosterBusy] = useState(false);
+    const [openId, setOpenId] = useState("");
     const [query, setQuery] = useState("");
     const [filter, setFilter] = useState<LedgerFilter>("all");
     const [sel, setSel] = useState<Set<string>>(new Set());
@@ -236,10 +246,23 @@ function LedgerBrowser({ close }: { close: () => void; }) {
 
     // pull sibling copies' records shortly after mount (IDB read is async)
     useEffect(() => {
-        void ledgerRefresh().then(() => setRows(ledgerDms())).catch(() => undefined);
+        void ledgerRefresh().then(refresh).catch(() => undefined);
     }, []);
 
-    const refresh = () => setRows(ledgerDms());
+    // Order-preserving refresh: re-sorting by lastSeen on every action makes
+    // the row you just clicked (Open/Restore bumps lastSeen) jump from wherever
+    // you scrolled to, to the TOP — which reads as "the window scrolled back
+    // up". Existing rows keep their slot; only genuinely new records (sweep,
+    // import, sibling plugins) append at the bottom, newest first.
+    const refresh = () => setRows(prev => {
+        const next = ledgerDms();
+        if (!prev?.length) return next;
+        const slot = new Map(prev.map((r, i) => [r.userId, i] as const));
+        const kept = next.filter(r => slot.has(r.userId))
+            .sort((a, b) => (slot.get(a.userId) ?? 0) - (slot.get(b.userId) ?? 0));
+        const fresh = next.filter(r => !slot.has(r.userId));
+        return kept.concat(fresh);
+    });
     const visible = applyFilter(rows.filter(r => matchesQuery(r, query)), filter);
     const hiddenCount = rows.filter(r => r.isFriend === false).length;
     const unnamedCount = rows.filter(isUnnamed).length;
@@ -403,6 +426,58 @@ function LedgerBrowser({ close }: { close: () => void; }) {
         }
     };
 
+    // local-cache search as you type (zero API calls); excludes ledger partners
+    const localMatches = searchPeopleCache(personQuery, new Set(rows.map(r => r.userId)));
+
+    const deepSearchRosters = async () => {
+        if (personQuery.trim().length < 2) {
+            setRosterText("Type at least 2 letters of their name above first.");
+            return;
+        }
+        setRosterBusy(true);
+        setRosterMatches([]);
+        setRosterText("searching every server you're in…");
+        stopFlag = { stop: false };
+        try {
+            const res = await searchGuildRosters(personQuery, {
+                exclude: new Set(rows.map(r => r.userId)),
+                stop: stopFlag,
+                paceMs: rosterPaceMs(),
+                onProgress: (done, total) => setRosterText(`searching servers ${done}/${total}…`),
+            });
+            setRosterMatches(res.persons);
+            setRosterText(res.rateLimited
+                ? `stopped early at Discord's rate limit — ${res.persons.length} match(es) from ${res.searched} server(s)`
+                : `${res.persons.length} match(es) from ${res.searched} server(s)`);
+        } catch (error: any) {
+            setRosterText(`search failed: ${String(error?.message ?? error)}`);
+        } finally {
+            setRosterBusy(false);
+        }
+    };
+
+    // Open a DM with ANY user id, even one the ledger has never seen:
+    // create-or-get returns the EXISTING channel (history intact) if a DM ever
+    // existed; only a never-DM'd user yields a fresh empty channel.
+    const openPersonById = async (rawId: string) => {
+        const id = rawId.trim();
+        if (!/^\d{15,20}$/.test(id)) {
+            setRosterText("That doesn't look like a Discord user ID (15-20 digits).");
+            return;
+        }
+        setOpenId(id);
+        try {
+            const { channelId, recipientName } = await resolveDmByUserId(id);
+            recordDm({ userId: id, channelId, username: recipientName, source: "restore" });
+            refresh();
+            ChannelRouter.transitionToChannel(channelId);
+        } catch {
+            setRosterText(`Couldn't open user ${id} — Discord refused (deleted/blocked?)`);
+        } finally {
+            setOpenId("");
+        }
+    };
+
     const doExport = () => {
         const payload = {
             exportedAt: new Date().toISOString(),
@@ -538,6 +613,64 @@ function LedgerBrowser({ close }: { close: () => void; }) {
                                 Forget {sel.size}
                             </Button>,
                     ]}
+                </div>
+            )}
+
+            <div style={{ marginTop: 8, display: "flex", gap: "6px", alignItems: "center" }}>
+                <div style={{ flex: 1 }}>
+                    <TextInput
+                        value={personQuery}
+                        placeholder="Find someone you've NEVER DM'd — name or past shared server…"
+                        onChange={(v: string) => { setPersonQuery(v); setRosterMatches([]); if (!rosterBusy) setRosterText(""); }}
+                    />
+                </div>
+                {personQuery.trim().length >= 2 && (
+                    rosterBusy ? (
+                        <Button size="xs" variant="dangerPrimary" title="Halt the server-roster sweep (matches found so far stay listed)" onClick={() => (stopFlag.stop = true)}>
+                            Stop
+                        </Button>
+                    ) : (
+                        <Button size="xs" variant="primary" disabled={Boolean(busy)} title="Asks every server you're in to search its FULL member list server-side — finds people not in your local cache at all (paced, stops on rate limit)" onClick={() => void deepSearchRosters()}>
+                            Search all servers
+                        </Button>
+                    )
+                )}
+                <Button size="xs" variant="secondary" title="Opens a DM with an exact user ID — create-or-get returns the original channel if one ever existed (history intact), otherwise starts a fresh DM" onClick={() => void openPersonById(personQuery)}>
+                    Open by ID
+                </Button>
+            </div>
+
+            {personQuery.trim().length >= 2 && (
+                <div style={{ marginTop: 4 }}>
+                    {rosterText && <Text variant="text-xs/normal">{rosterText}</Text>}
+                    {localMatches.length > 0 && (
+                        <>
+                            <Text variant="text-xs/normal">{"From local cache (instant, no API):"}</Text>
+                            {localMatches.slice(0, 10).map(p => (
+                                <div key={p.userId} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "2px 0" }}>
+                                    <span style={{ flex: 1 }}>{p.username}</span>
+                                    <Text variant="text-xs/normal">{`id ${p.userId}`}</Text>
+                                    <Button size="xs" variant="secondary" disabled={Boolean(openId)} title="Opens the original conversation if a DM ever existed, else a fresh DM. The ledger remembers them afterwards." onClick={() => void openPersonById(p.userId)}>
+                                        {openId === p.userId ? "opening…" : "Open DM"}
+                                    </Button>
+                                </div>
+                            ))}
+                        </>
+                    )}
+                    {rosterMatches.length > 0 && (
+                        <>
+                            <Text variant="text-xs/normal">{"From server rosters:"}</Text>
+                            {rosterMatches.slice(0, 25).map(p => (
+                                <div key={p.userId} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "2px 0" }}>
+                                    <span style={{ flex: 1 }}>{p.username}</span>
+                                    <Text variant="text-xs/normal">{`in ${p.inGuild}`}</Text>
+                                    <Button size="xs" variant="secondary" disabled={Boolean(openId)} title="Opens the original conversation if a DM ever existed, else a fresh DM. The ledger remembers them afterwards." onClick={() => void openPersonById(p.userId)}>
+                                        {openId === p.userId ? "opening…" : "Open DM"}
+                                    </Button>
+                                </div>
+                            ))}
+                        </>
+                    )}
                 </div>
             )}
 
