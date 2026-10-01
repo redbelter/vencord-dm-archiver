@@ -20,6 +20,7 @@ import {
     ChannelStore,
     Checkbox,
     RestAPI,
+    SelectedChannelStore,
     Text,
     TextInput,
     Toasts,
@@ -56,6 +57,32 @@ export function restorePaceMs(): number {
 export function rosterPaceMs(): number {
     const v = parseInt(safeStore.getItem("DmLedgerRosterPace") ?? "", 10);
     return Number.isFinite(v) && v >= 0 && v <= 150 ? v : 150;
+}
+
+/**
+ * Discord's router can no-op when handed a channel id its stores only just
+ * learned about (the create-or-get response hasn't propagated to the view
+ * layer yet). Route, then confirm via SelectedChannelStore; retry a couple of
+ * times. Without this the FIRST click on a never-opened ledger DM feels dead
+ * and the second click is what actually navigates.
+ * A shared token makes stale chains abort: if you open A then quickly B, A's
+ * pending retries give up instead of yanking you back from B.
+ */
+let routeTarget = "";
+export function routeUntil(channelId: string): void {
+    routeTarget = channelId;
+    ChannelRouter.transitionToChannel(channelId);
+    let tries = 0;
+    const check = () => {
+        tries++;
+        if (routeTarget !== channelId) return; // user moved on — stale chain aborts
+        let selected = "";
+        try { selected = String(SelectedChannelStore.getChannelId?.() ?? ""); } catch { selected = "?"; }
+        if (selected === channelId || selected === "?" || tries >= 3) return;
+        ChannelRouter.transitionToChannel(channelId);
+        setTimeout(check, 250);
+    };
+    setTimeout(check, 150);
 }
 
 export interface ImportSummary {
@@ -286,13 +313,18 @@ function LedgerBrowser({ close }: { close: () => void; }) {
             // channels the local client knows route instantly; ledger-only ones
             // need create-or-get first (it returns the ORIGINAL channel)
             let { channelId } = row;
-            if (!channelId || !ChannelStore.getChannel?.(channelId)) {
+            const known = Boolean(channelId) && Boolean(ChannelStore.getChannel?.(channelId));
+            if (!known) {
                 const r = await resolveDmByUserId(row.userId);
                 channelId = r.channelId;
                 recordDm({ userId: row.userId, channelId, username: r.recipientName, source: "restore" });
-                refresh();
             }
-            ChannelRouter.transitionToChannel(channelId);
+            // Routing to a channel id the stores learned about ~100ms ago (from
+            // the create-or-get response) can silently no-op — the view doesn't
+            // exist yet, so the FIRST click feels dead and the second works.
+            // Route, wait a beat, and if the selection didn't take, route again.
+            routeUntil(channelId);
+            refresh();
         } catch (e: any) {
             toast(`Couldn't open ${displayName(row)} — Discord refused (deleted/blocked?)`, true);
         }
@@ -469,8 +501,8 @@ function LedgerBrowser({ close }: { close: () => void; }) {
         try {
             const { channelId, recipientName } = await resolveDmByUserId(id);
             recordDm({ userId: id, channelId, username: recipientName, source: "restore" });
+            routeUntil(channelId);
             refresh();
-            ChannelRouter.transitionToChannel(channelId);
         } catch {
             setRosterText(`Couldn't open user ${id} — Discord refused (deleted/blocked?)`);
         } finally {
