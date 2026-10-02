@@ -58,6 +58,7 @@ Then: **Settings → Vencord → Plugins → DmLedger** (search "dm").
 - `showDeleteOption` — unlocks deletion commands/buttons
 - `showChatBarEntry` — the browser button, `showArchiveButton` — the dashboard button
 - `captureOnStart` — sweep the live DM list at startup, `hideQuestStuff`
+- `hideActiveNow` — hide the entire "Active Now" column on the Friends page
 - `hideUpsellPrompts` — hides "Gift Nitro" buttons, the "try Nitro" ad card, and "connect your accounts" nudges (Nitro/Connections settings pages stay reachable)
 - Values you had under the old DMArchiver plugin move over automatically on first start.
 

@@ -31,7 +31,7 @@ import { Logger } from "@utils/Logger";
 import definePlugin, { OptionType } from "@utils/types";
 import { ChannelStore, RestAPI, SelectedChannelStore, Toasts, UserStore } from "@webpack/common";
 
-import { applyQuestHiding, applyUpsellHiding, type ArchiverSettings, collectDmNames, collectDmUserChannels, deleteUserMessages, dmRecipientId, exportAllDmMedia, getNonFriendDms, resolveDmChannelId, saveAllDmsAsText, saveDmAsText } from "./archiveCore";
+import { applyActiveNowHiding, applyQuestHiding, applyUpsellHiding, type ArchiverSettings, collectDmNames, collectDmUserChannels, deleteUserMessages, dmRecipientId, exportAllDmMedia, getNonFriendDms, resolveDmChannelId, saveAllDmsAsText, saveDmAsText } from "./archiveCore";
 import { closeArchiveDashboard, openArchiveDashboard } from "./ArchiveDashboard";
 import { openLedgerBrowser } from "./Browser";
 import { closeFloating } from "./floating";
@@ -83,9 +83,15 @@ const settings = definePluginSettings({
     },
     hideQuestStuff: {
         type: OptionType.BOOLEAN,
-        description: "Hide Discord Quest UI elements while the plugin is enabled.",
+        description: "Hide Discord Quest UI elements while the plugin is enabled (nav button, quest cards in Active Now).",
         default: false,
         onChange: () => applyQuestHiding(settings.store.hideQuestStuff),
+    },
+    hideActiveNow: {
+        type: OptionType.BOOLEAN,
+        description: "Hide the entire \"Active Now\" column on the Friends page.",
+        default: false,
+        onChange: () => applyActiveNowHiding(settings.store.hideActiveNow),
     },
     hideUpsellPrompts: {
         type: OptionType.BOOLEAN,
@@ -266,6 +272,7 @@ export default definePlugin({
         if (settings.store.captureOnStart) sweepLive().catch(() => undefined);
         applyQuestHiding(settings.store.hideQuestStuff);
         applyUpsellHiding(settings.store.hideUpsellPrompts);
+        applyActiveNowHiding(settings.store.hideActiveNow);
         log.info(`ready — ledger holds ${ledgerDmCount()} partner(s), ${ledgerNameCount()} name(s)`);
         toast("DmLedger loaded: /dm-ledger (roster) · /dm-dashboard (export) · 🔍 and 📁 in DM chat bars");
         if (settings.store.showDeleteOption) {
@@ -278,6 +285,7 @@ export default definePlugin({
         removeChatBarButton("dm-ledger-archive");
         applyQuestHiding(false);
         applyUpsellHiding(false);
+        applyActiveNowHiding(false);
         closeFloating(); // roster browser (default key)
         closeArchiveDashboard(); // archive dashboard ("DMArchiver" key) — windows die with the plugin
     },

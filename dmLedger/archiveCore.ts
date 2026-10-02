@@ -47,11 +47,15 @@ export type Progress = (p: { user: string; found: number; saved: number; }) => v
 // ─── Quest hiding ────────────────────────────────────────────────────────────
 
 export const HIDE_QUEST_STYLE_ID = "vc-dmarchiver-hide-quests";
+// Proven against live DOM (CDP probe): quest tiles in the Active Now column
+// are .questCardContextMenuTrigger__xxxxx / .itemCard__xxxxx (build-suffix
+// varies — match the STABLE prefix, the way theme authors do).
 const HIDE_QUEST_CSS = `
     [aria-label*="Quest" i],
     [aria-label*="Quests" i],
     a[href*="/quest" i],
-    button[aria-label*="Quest" i] {
+    button[aria-label*="Quest" i],
+    [class*="questCard" i] {
         display: none !important;
     }
 `;
@@ -63,6 +67,28 @@ export function applyQuestHiding(enabled: boolean): void {
     const style = document.createElement("style");
     style.id = HIDE_QUEST_STYLE_ID;
     style.textContent = HIDE_QUEST_CSS;
+    document.head.appendChild(style);
+}
+
+// ─── Active Now column hiding ────────────────────────────────────────────────
+// The whole right-hand "Active Now" column on the Friends page (and its
+// quest/activity cards wholesale). Class suffix is build-dependent; the
+// nowPlayingColumn prefix is stable — same matching strategy themes use.
+
+export const HIDE_ACTIVENOW_STYLE_ID = "vc-dmledger-hide-active-now";
+const HIDE_ACTIVENOW_CSS = `
+    div[class*="nowPlayingColumn" i] {
+        display: none !important;
+    }
+`;
+
+export function applyActiveNowHiding(enabled: boolean): void {
+    document.getElementById(HIDE_ACTIVENOW_STYLE_ID)?.remove();
+    if (!enabled) return;
+
+    const style = document.createElement("style");
+    style.id = HIDE_ACTIVENOW_STYLE_ID;
+    style.textContent = HIDE_ACTIVENOW_CSS;
     document.head.appendChild(style);
 }
 
