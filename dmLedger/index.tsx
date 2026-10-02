@@ -94,26 +94,35 @@ const settings = definePluginSettings({
     },
 });
 
-// One-time, key-by-key migration from the retired DMArchiver plugin's
-// settings namespace (Vencord's migratePluginSettings can't help: DmLedger
-// already exists, and showChatBarEntry means different things to each).
+// One-time, key-by-key migration from the retired archive plugin's settings
+// namespaces (Vencord's migratePluginSettings can't help: DmLedger already
+// exists, and showChatBarEntry means different things to each). The plugin
+// shipped under two older names, so check both ghosts.
 function migrateArchiverSettings() {
     try {
         const { plugins } = SettingsStore.plain;
-        const oldCfg = plugins?.DMArchiver;
-        if (!oldCfg) return;
-        // If we're running, the plugin is enabled — a fresh entry must say so
-        // or saving plain settings would look like a disable.
-        const mine: Record<string, any> = (plugins.DmLedger ??= { enabled: true });
         let moved = 0;
-        for (const key of ["downloadFolder", "targetUserId", "includeLinkImages", "exportExternalMedia", "maxImages", "hideQuestStuff", "showDeleteOption"]) {
-            if (key in oldCfg && !(key in mine)) { mine[key] = oldCfg[key]; moved++; }
+        for (const legacy of ["DMArchiver", "MinimalPlugin"]) {
+            const oldCfg = plugins?.[legacy];
+            if (!oldCfg) continue;
+            // If we're running, the plugin is enabled — a fresh entry must say so
+            // or saving plain settings would look like a disable.
+            const mine: Record<string, any> = (plugins.DmLedger ??= { enabled: true });
+            for (const key of ["downloadFolder", "targetUserId", "includeLinkImages", "exportExternalMedia", "maxImages", "hideQuestStuff", "showDeleteOption"]) {
+                // first ghost with a value wins (DMArchiver is the younger name)
+                if (key in oldCfg && !(key in mine)) { mine[key] = oldCfg[key]; moved++; }
+            }
+            // hideQuestStuff default is false, so upgraders have an explicit
+            // false stored that is NOT a user choice — legacy true still wins.
+            if (oldCfg.hideQuestStuff === true && mine.hideQuestStuff !== true) {
+                mine.hideQuestStuff = true; moved++;
+            }
+            if ("showChatBarEntry" in oldCfg && !("showArchiveButton" in mine)) { mine.showArchiveButton = oldCfg.showChatBarEntry; moved++; }
+            delete plugins[legacy];
         }
-        if ("showChatBarEntry" in oldCfg && !("showArchiveButton" in mine)) { mine.showArchiveButton = oldCfg.showChatBarEntry; moved++; }
-        delete plugins.DMArchiver;
         if (moved) {
             SettingsStore.markAsChanged();
-            log.info(`migrated ${moved} setting(s) from the old DMArchiver plugin`);
+            log.info(`migrated ${moved} setting(s) from the old archive plugin`);
         }
     } catch { /* settings shape unexpected — defaults are safe */ }
 }
