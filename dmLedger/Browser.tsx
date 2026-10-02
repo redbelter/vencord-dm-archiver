@@ -13,6 +13,7 @@
 // Read-only toward Discord except the create-or-get call behind Restore
 // (returns the ORIGINAL channel — same sanctioned call GhostDms uses).
 
+import { commands as commandRegistry } from "@api/Commands";
 import { Button } from "@components/Button";
 import { copyToClipboard } from "@utils/clipboard";
 import {
@@ -290,7 +291,7 @@ function LedgerBrowser({ close }: { close: () => void; }) {
         const fresh = next.filter(r => !slot.has(r.userId));
         return kept.concat(fresh);
     });
-    const visible = rows;
+    const visible = applyFilter(rows.filter(r => matchesQuery(r, query)), filter);
     const hiddenCount = rows.filter(r => r.isFriend === false).length;
     const unnamedCount = rows.filter(isUnnamed).length;
 
@@ -330,14 +331,52 @@ function LedgerBrowser({ close }: { close: () => void; }) {
         }
     };
 
-    const doRestoreOne = async (row: LedgerDm) => {
+    /**
+     * Open the archive dashboard with THIS row pre-selected: dispatch our own
+     * /dm-dashboard command with the row's channel as context — the exact path
+     * the chat-bar button uses. Ghost rows (channel evicted from the sidebar)
+     * get create-or-get first, same as doOpen.
+     */
+    const doArchiveRow = async (row: LedgerDm) => {
+        let { channelId } = row;
+        if (!channelId || !ChannelStore.getChannel?.(channelId)) {
+            try {
+                const r = await resolveDmByUserId(row.userId);
+                channelId = r.channelId;
+                recordDm({ userId: row.userId, channelId, username: r.recipientName, source: "restore" });
+                refresh();
+            } catch {
+                toast(`Couldn't reopen ${displayName(row)}'s DM — the dashboard will list it unselected`, true);
+            }
+        }
+        // commandRegistry is untyped (Record<string, any>) — ctx carries only
+        // what /dm-dashboard reads (channel.id); the cast is our call contract
+        const cmd = commandRegistry?.["dm-dashboard"];
+        if (!cmd) return toast("DmLedger's dashboard command is unavailable (Ctrl+R this client)", true);
         try {
-            const r = await resolveDmByUserId(row.userId);
-            recordDm({ userId: row.userId, channelId: r.channelId, username: r.recipientName, source: "restore" });
-            refresh();
-            toast(`Restored ${row.username ?? "DM"}`);
+            await cmd.execute([], { channel: { id: channelId } } as any);
         } catch {
-            toast(`Restore refused for ${displayName(row)}`, true);
+            toast("Opening the archive dashboard failed", true);
+        }
+    };
+
+    /**
+     * Open MsgPurge's control panel. msgPurge is a SEPARATE plugin, so this
+     * goes through the shared command registry (never a cross-plugin import —
+     * the bundle must stay self-contained); honest toast if it's not installed.
+     * Purge targets the DM on screen, so route there first when needed.
+     */
+    const doPurgeRow = async (row: LedgerDm) => {
+        const cmd = commandRegistry?.msgpurge;
+        if (!cmd) return toast("MsgPurge isn't installed/loaded — its panel can't open from here", true);
+        if (!row.channelId || !ChannelStore.getChannel?.(row.channelId)) {
+            // panel targets the on-screen DM → make this row's DM the selection
+            await doOpen(row);
+        }
+        try {
+            await cmd.execute([], {} as any);
+        } catch {
+            toast("Opening the msgPurge panel failed", true);
         }
     };
 
@@ -730,8 +769,11 @@ function LedgerBrowser({ close }: { close: () => void; }) {
                         <Button size="xs" variant="secondary" disabled={Boolean(busy)} title="Opens this DM — if your list no longer has the channel, it first asks Discord to reopen it (same channel, history intact)" onClick={() => void doOpen(row)}>
                             Open
                         </Button>
-                        <Button size="xs" variant="secondary" disabled={Boolean(busy)} title="Asks Discord to put this DM back in your sidebar channel list (create-or-get: reopens the ORIGINAL channel — nothing new is created, nothing is sent)" onClick={() => void doRestoreOne(row)}>
-                            Restore
+                        <Button size="xs" variant="secondary" disabled={Boolean(busy)} title="Open the archive dashboard with THIS DM pre-selected (export its media + transcript to your download folder)" onClick={() => void doArchiveRow(row)}>
+                            Archive
+                        </Button>
+                        <Button size="xs" variant="secondary" disabled={Boolean(busy)} title="Open the msgPurge panel (deletes ONLY your own messages, rate-limited; needs the separate MsgPurge plugin)" onClick={() => void doPurgeRow(row)}>
+                            Purge
                         </Button>
                         <Button size="xs" variant="secondary" disabled={Boolean(busy)} title="Copies this partner's user id + channel id as JSON to your clipboard (paste it into other tools/plugins)" onClick={() => doCopy(row)}>
                             Copy

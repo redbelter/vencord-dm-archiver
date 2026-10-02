@@ -9,7 +9,8 @@ A [Vencord](https://github.com/Vendicated/Vencord) userplugin that remembers **e
 - 🧠 **Permanent ledger** — every DM you send (and every DM channel Discord's list still shows, or that your imported data package contains) is recorded to a local DataStore roster: user id, channel id, name, last-seen. It survives restarts, re-logins, and Discord dropping channels from its ~100-channel sidebar list. Names are resolved lazily and cached.
 - 🔎 **Browser window** (`/dm-ledger` or the search icon in any DM's chat bar) — floating, resizable, stays open while you browse:
   - search by name / id / channel id, filter all / hidden / unnamed
-  - **Restore** puts a dropped DM back in your sidebar (create-or-get, nothing new is sent), **Open** routes to it (with navigation confirm + capped retry, so it never takes two clicks), **Copy** puts user+channel ids on the clipboard, **Forget** removes a record
+  - per-row actions: **Open** routes to the DM (with navigation confirm + capped retry, so it never takes two clicks), **Archive** opens the export dashboard with that DM pre-selected, **Purge** opens the msgPurge panel for that conversation (if the MsgPurge plugin is installed), **Copy** puts user+channel ids on the clipboard, **Forget** removes a record
+  - batch actions for selections: Restore N (reopen via create-or-get), Resolve names, Forget N
   - **Find anyone** — instant match against your local people cache, plus a paced deep sweep of every server roster you're in; open a DM to someone by exact snowflake id too
   - **Import your Discord data package** (`Read the data we've collected` → `users/@me/channels.json`) to backfill the roster from up to years of history — strictly read-only, zero Discord writes
   - **Sweep live** re-records your current DM list in one REST call; row order stays stable no matter what you click
