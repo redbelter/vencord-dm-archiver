@@ -31,7 +31,7 @@ import { Logger } from "@utils/Logger";
 import definePlugin, { OptionType } from "@utils/types";
 import { ChannelStore, RestAPI, SelectedChannelStore, Toasts, UserStore } from "@webpack/common";
 
-import { applyQuestHiding, type ArchiverSettings, collectDmNames, collectDmUserChannels, deleteUserMessages, dmRecipientId, exportAllDmMedia, getNonFriendDms, resolveDmChannelId, saveAllDmsAsText, saveDmAsText } from "./archiveCore";
+import { applyQuestHiding, applyUpsellHiding, type ArchiverSettings, collectDmNames, collectDmUserChannels, deleteUserMessages, dmRecipientId, exportAllDmMedia, getNonFriendDms, resolveDmChannelId, saveAllDmsAsText, saveDmAsText } from "./archiveCore";
 import { closeArchiveDashboard, openArchiveDashboard } from "./ArchiveDashboard";
 import { openLedgerBrowser } from "./Browser";
 import { closeFloating } from "./floating";
@@ -86,6 +86,12 @@ const settings = definePluginSettings({
         description: "Hide Discord Quest UI elements while the plugin is enabled.",
         default: false,
         onChange: () => applyQuestHiding(settings.store.hideQuestStuff),
+    },
+    hideUpsellPrompts: {
+        type: OptionType.BOOLEAN,
+        description: "Hide the \"Gift Nitro\" buttons, the \"try Nitro\" ad card, and \"connect account\" nudges. Your Nitro/Connections settings pages stay reachable.",
+        default: false,
+        onChange: () => applyUpsellHiding(settings.store.hideUpsellPrompts),
     },
     showDeleteOption: {
         type: OptionType.BOOLEAN,
@@ -259,6 +265,7 @@ export default definePlugin({
         addChatBarButton("dm-ledger-archive", ArchiveButton, FolderIcon);
         if (settings.store.captureOnStart) sweepLive().catch(() => undefined);
         applyQuestHiding(settings.store.hideQuestStuff);
+        applyUpsellHiding(settings.store.hideUpsellPrompts);
         log.info(`ready — ledger holds ${ledgerDmCount()} partner(s), ${ledgerNameCount()} name(s)`);
         toast("DmLedger loaded: /dm-ledger (roster) · /dm-dashboard (export) · 🔍 and 📁 in DM chat bars");
         if (settings.store.showDeleteOption) {
@@ -270,6 +277,7 @@ export default definePlugin({
         removeMessagePreSendListener(onSend);
         removeChatBarButton("dm-ledger-archive");
         applyQuestHiding(false);
+        applyUpsellHiding(false);
         closeFloating(); // roster browser (default key)
         closeArchiveDashboard(); // archive dashboard ("DMArchiver" key) — windows die with the plugin
     },

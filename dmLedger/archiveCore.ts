@@ -66,6 +66,36 @@ export function applyQuestHiding(enabled: boolean): void {
     document.head.appendChild(style);
 }
 
+// ─── Upsell hiding (Nitro gifts + connect-account prompts) ──────────────────
+// Gift entry-points, the "try Nitro" ad card, and the "connect your accounts"
+// nudges — deliberately NOT the Nitro/Connections settings tabs, voice
+// "Connect" buttons, or your own badges (you may still want those).
+
+export const HIDE_UPSELLS_STYLE_ID = "vc-dmledger-hide-upsells";
+const HIDE_UPSELLS_CSS = `
+    #gift-button,
+    #nitro-mini-card-container,
+    #nitro-mini-card,
+    [aria-label*="Gift Nitro" i],
+    [aria-label*="Send a Gift" i],
+    button[aria-label*="gift" i],
+    [aria-label*="Connected Account" i],
+    [aria-label*="Connect Account" i],
+    [aria-label*="Add a Connection" i] {
+        display: none !important;
+    }
+`;
+
+export function applyUpsellHiding(enabled: boolean): void {
+    document.getElementById(HIDE_UPSELLS_STYLE_ID)?.remove();
+    if (!enabled) return;
+
+    const style = document.createElement("style");
+    style.id = HIDE_UPSELLS_STYLE_ID;
+    style.textContent = HIDE_UPSELLS_CSS;
+    document.head.appendChild(style);
+}
+
 // ─── Message URL candidates ──────────────────────────────────────────────────
 
 export function getCandidates(message: MessageJSON, includeLinkImages: boolean): UrlCandidate[] {
