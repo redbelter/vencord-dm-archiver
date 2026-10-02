@@ -20,12 +20,12 @@ import {
     exportForUsers,
     getFriendIds,
     saveDmAsText,
-} from "./core";
+} from "./archiveCore";
 import { closeFloating, openFloating } from "./floating";
 
-const log = new Logger("DMArchiver/Dashboard");
+const log = new Logger("DmLedger/ArchiveDashboard");
 
-const Native = VencordNative.pluginHelpers.DMArchiver as PluginNative<typeof import("./native")> | undefined;
+const Native = VencordNative.pluginHelpers.DmLedger as PluginNative<typeof import("./native")> | undefined;
 
 interface Row {
     userId: string;
@@ -38,8 +38,8 @@ export function openArchiveDashboard(initialSettings: ArchiverSettings, showDele
     // floating window (same UX family as GhostDms/msgPurge): stays open while
     // you browse DMs it opens, draggable + resizable, sizes persist
     openFloating({
-        storageKey: "DMArchiver",
-        title: "DMArchiver — stays open while you browse",
+        storageKey: "DMArchiver", // keeps your saved window size from the old plugin
+        title: "DmLedger archive — stays open while you browse",
         render: close => (
             <Dashboard
                 onClose={close}
@@ -53,7 +53,7 @@ export function openArchiveDashboard(initialSettings: ArchiverSettings, showDele
 
 /** close the floating dashboard (plugin stop() / harness reset) */
 export function closeArchiveDashboard(): boolean {
-    return closeFloating();
+    return closeFloating("DMArchiver");
 }
 
 function Dashboard({ onClose, initialSettings, showDeleteOption, initialChannelId }: {
@@ -227,7 +227,9 @@ function Dashboard({ onClose, initialSettings, showDeleteOption, initialChannelI
                         disabled={busy || !Native}
                         onClick={async () => {
                             try {
-                                const folder = await Native?.chooseFolder?.();
+                                const picked: any = await Native?.chooseFolder?.();
+                                // merged native returns { path }; old shape was a bare string
+                                const folder = typeof picked === "string" ? picked : picked?.path;
                                 if (folder) setCfg(c => ({ ...c, downloadFolder: folder }));
                             } catch (error) {
                                 log.warn("folder picker failed:", error);

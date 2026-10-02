@@ -11,6 +11,7 @@
 
 import { BrowserWindow, dialog } from "electron";
 import { existsSync, readdirSync, readFileSync } from "fs";
+import { access, mkdir, writeFile as fsWriteFile } from "fs/promises";
 import { join } from "path";
 
 export interface PackageDm {
@@ -144,6 +145,48 @@ export async function scanPackage(_event: any, rootRaw: unknown): Promise<Packag
         return { ok: true, meId: meId ?? undefined, dms, groupDms, names, friends, totalChannelDirs: total };
     } catch (e) {
         return { ok: false, error: `Scan failed: ${String(e)}` };
+    }
+}
+
+// ─── absorbed from the retired DMArchiver native side ────────────────────────
+// Direct disk writes + downloads that bypass browser sandboxing. All methods
+// return safe values; the renderer falls back to fetch / save dialogs when
+// these are unavailable.
+
+// Strip any path components so a crafted "fileName" can't escape the folder
+function safeJoin(folder: string, fileName: string): string {
+    const safe = fileName.replace(/[/\\]/g, "_").replace(/\0/g, "_");
+    return join(folder, safe);
+}
+
+export async function downloadUrl(_: any, url: string) {
+    try {
+        const res = await fetch(url, { redirect: "follow" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const contentType = res.headers.get("content-type") ?? undefined;
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        return { ok: true as const, bytes, contentType };
+    } catch (error) {
+        return { ok: false as const, error: String(error) };
+    }
+}
+
+export async function writeFile(_: any, folder: string, fileName: string, data: Uint8Array) {
+    try {
+        await mkdir(folder, { recursive: true });
+        await fsWriteFile(safeJoin(folder, fileName), data);
+        return { success: true as const };
+    } catch (error) {
+        return { success: false as const, error: String(error) };
+    }
+}
+
+export async function fileExists(_: any, folder: string, fileName: string) {
+    try {
+        await access(safeJoin(folder, fileName));
+        return true;
+    } catch {
+        return false;
     }
 }
 

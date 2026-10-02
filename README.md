@@ -1,26 +1,32 @@
-# DMArchiver
+# DmLedger — the permanent DM roster, browser, and archive toolkit
 
-A [Vencord](https://github.com/Vendicated/Vencord) userplugin that exports and preserves DM content — media files and full text history — lets you audit everyone you've ever DM'd (including closed/hidden DMs and non-friends), and optionally delete **only your own** messages.
+A [Vencord](https://github.com/Vendicated/Vencord) userplugin that remembers **every DM partner you've ever had — client-side, forever** — and gives you one window to browse, search, restore, and export them.
 
-Now with a full **archive dashboard**: searchable DM list, multi-select, live export progress — right inside Discord. The dashboard is a **floating, resizable window** (same UX family as DmLedger/MsgPurge): it stays open while you click through the DMs it lists, sizes persist per plugin, hide with – mid-export and it keeps going.
+**2026-10: DMArchiver and GhostDms were retired into this plugin.** One install (`dmLedger/`) now ships the roster, the `/dm-ledger` browser, the archive dashboard, and every export/save/delete command. Old settings migrate themselves on first start. If you still have the old plugins installed, uninstall them and keep only this one.
 
-## Features
+## What it does
 
-- 🖼️ **Media export** — attachments, embed images/videos/thumbnails, and image URLs typed into messages; downloaded via the main process (bypasses CORS), with a fetch fallback
-- 📄 **Text transcripts** — full DM history saved as formatted `.txt`
-- 🔎 **Audit** — list every DM user, flag the ones you're *not* friends with
-- 🗑️ **Self-deletion** — batch-delete *your own* messages (rate-limited, retry, peer messages never touched); double-gated behind a setting
-- 🧠 **Export map includes ledger-known DMs** — DM partners remembered by [DmLedger](#dmledger-also-in-this-repo-dmledger-plus-a-ledgerts-copy-inside-each-plugin) whose channels fell out of Discord's ~100-channel list are still resolved to their channel id and exported (the id outlives the list)
-- 🎛️ **Dashboard UI** — open with `/dm-dashboard` or the folder button in the DM chat bar; **floating window** (drag/resize/persist, – hides mid-export without killing it)
+- 🧠 **Permanent ledger** — every DM you send (and every DM channel Discord's list still shows, or that your imported data package contains) is recorded to a local DataStore roster: user id, channel id, name, last-seen. It survives restarts, re-logins, and Discord dropping channels from its ~100-channel sidebar list. Names are resolved lazily and cached.
+- 🔎 **Browser window** (`/dm-ledger` or the search icon in any DM's chat bar) — floating, resizable, stays open while you browse:
+  - search by name / id / channel id, filter all / hidden / unnamed
+  - **Restore** puts a dropped DM back in your sidebar (create-or-get, nothing new is sent), **Open** routes to it (with navigation confirm + capped retry, so it never takes two clicks), **Copy** puts user+channel ids on the clipboard, **Forget** removes a record
+  - **Find anyone** — instant match against your local people cache, plus a paced deep sweep of every server roster you're in; open a DM to someone by exact snowflake id too
+  - **Import your Discord data package** (`Read the data we've collected` → `users/@me/channels.json`) to backfill the roster from up to years of history — strictly read-only, zero Discord writes
+  - **Sweep live** re-records your current DM list in one REST call; row order stays stable no matter what you click
+- 🖼️ **Archive dashboard** (`/dm-dashboard` or the folder button in the chat bar) — searchable DM list with multi-select and live export progress, also a floating window:
+  - media export (attachments, embed images/videos, image URLs in messages) downloaded via the main process with a fetch fallback
+  - full text transcripts as formatted `.txt`
+  - resume-safe: existing files are skipped and skipped media gets a written report
+  - export map unions Discord's list **and** ledger-known DMs — partners whose channels fell out of the sidebar list still resolve by remembered channel id
+- 🗑️ **Self-deletion** (optional, double-gated by `showDeleteOption`) — batch-delete **only your own** messages, rate-limited with retry; peer messages are never touched
 - 🚫 Optional Quest-UI hiding
-- ⏯️ Resume-safe: existing files are skipped, skipped media gets a written report
 
 ## Install
 
 Vencord compiles plugins at build time — clone this repo into your Vencord source tree:
 
 ```bash
-git clone https://github.com/redbelter/vencord-dm-archiver Vencord/src/userplugins/dmArchiver
+git clone https://github.com/redbelter/vencord-dm-archiver Vencord/src/userplugins/dmLedger
 cd Vencord
 pnpm install
 pnpm build       # or: pnpm watch  (rebuild on save; Ctrl+R in Discord)
@@ -28,127 +34,47 @@ pnpm build       # or: pnpm watch  (rebuild on save; Ctrl+R in Discord)
 
 If you have a patched Discord desktop install (`pnpm build && node scripts/runInstaller.mjs`), just `Ctrl+R` after the build.
 
-Then: **Settings → Vencord → Plugins → DMArchiver** (search "dm").
+Then: **Settings → Vencord → Plugins → DmLedger** (search "dm").
 
----
-
-# MsgPurge (also in this repo: `msgPurge/`)
-
-A **separate Vencord plugin** for rate-limited deletion of **your own** messages — designed to run for hours without babysitting. Copy the `msgPurge/` folder into `Vencord/src/userplugins/msgPurge/` and build the same way.
-
-## Features
-
-- 🧮 **Built-in rate control** — configurable msgs/minute (1–30), fixed rolling window + jitter so you never burst like a bot
-- 🎚️ **Scope: All messages or Only media** — pick between deleting everything you sent or just messages that contain attachments
-- ⏸️ **Pause / resume / stop anytime** — a Stop mid-run saves the exact queue of remaining message IDs
-- 💾 **Resumable across restarts** — the unfinished queue persists to plugin settings; after a Discord restart you get offered "Resume queue" or "Discard"
-- 🚦 **Live status panel** — deleted / failed / scanned counts, msgs/min estimate, queued remainder, target, elapsed time
-- 🛡️ **Own messages only** — the engine filters by your user ID at scan time; peer messages are never queued, let alone deleted
-- 👥 **DM sweep options** — current channel, every DM, and "skip friends" filter
-- ⚡ **429-aware** — on rate-limit responses it cools down (60s+backoff) and retries instead of hammering
-- 🧠 **Sees beyond Discord's ~100-DM window** — if [DmLedger](#dmledger-also-in-this-repo-dmledger-plus-a-ledgerts-copy-inside-each-plugin) remembers a DM the live list dropped, the picker lists it and explicit channel-id targets resolve through the ledger — deleting only needs the channel id
-- 🪟 **Floating window, not a modal** — the control panel is the same draggable/resizable mini-window family as DmLedger: navigate your chats while it watches, hide with – and the purge keeps running in the background, **Open** in the DM picker navigates without closing the panel
-
-## Usage
-
-- **`/msgpurge`** — opens the control panel (option: `scope: all | media`)
-- **`/msgpurge-here`** — immediately starts deleting your messages in the current channel at the configured rate
-- 🗑️ chat-bar button — same control panel, right in the channel
-- Enable it first: **Settings → Vencord → Plugins → MsgPurge** (the "Master switch"), and tune **rate (msgs/min)** and **max retries** there.
-
-> ⚠️ Deletion is permanent and irreversible — this deletes through Discord's own API as your account. Start with one channel and a low rate.
-
-## Usage
-
-Open the dashboard with **`/dm-dashboard`**, the 📁 button in any DM's chat bar, and:
-
-1. Set the export folder (empty = save-dialog per file)
-2. Filter / **Select all shown** / **+ non-friends**
-3. **Export media** and/or **Save transcripts** — watch live progress
-4. *(optional)* enable `showDeleteOption` in plugin settings → per-row **delete mine** buttons appear (with a confirm step)
-
-### Slash commands (headless / scripting)
+## Slash commands
 
 | Command | What |
 |---|---|
-| `/dm-dashboard` | Open the dashboard |
-| `/list-dm-users` | All DM users (username + ID) — REST + store merged, finds hidden DMs |
-| `/export-dm-media userId:` | Export media for one user or all DMs |
-| `/save-dm-text userId:` | Transcript of one DM, current conversation, or all |
-| `/list-non-friends` | DM users you aren't friends with |
-| `/toggle-delete-commands` | Flip the deletion gate |
-| `/delete-dm-messages userId:` | Delete **your** messages in one DM (gated) |
-| `/delete-all-my-messages` | Same, scoped to the current DM (gated) |
+| `/dm-ledger` | Open the roster browser |
+| `/dm-dashboard` | Open the archive dashboard |
+| `/dm-export <user> [days]` | Export DM text+media to the download folder |
+| `/dm-export-all [days]` | Export every DM in the map |
+| `/dm-save <user>` | Save text transcript only |
+| `/dm-save-all` | Save every DM transcript |
+| `/dm-audit` | List every DM partner, flag non-friends |
+| `/dm-delete <user> <days>` | Delete your own messages (needs `showDeleteOption`) |
+| `/dm-delete-recent <days>` | Same, across all DMs (needs `showDeleteOption`) |
 
-## Settings
+## Settings (Settings → Plugins → DmLedger)
 
-| Setting | Default | Notes |
-|---|---|---|
-| `downloadFolder` | *empty* | Absolute path; empty = native save dialog each file |
-| `targetUserId` | *empty* | Default target for commands (empty = current channel) |
-| `includeLinkImages` | ✅ | Harvest image URLs from message text |
-| `exportExternalMedia` | ❌ | Also save non-Discord links (they rot over time) |
-| `maxImages` | `0` | Cap per run (0 = unlimited); skips are reported |
-| `hideQuestStuff` | ❌ | CSS-hide Discord Quest UI |
-| `showDeleteOption` | ❌ | Unlocks deletion commands + dashboard delete buttons |
-| `showChatBarEntry` | ✅ | Folder button in DM chat bars |
+- `downloadFolder` — where exports go (e.g. `C:\Users\<you>\Pictures\DMExport`)
+- `maxImages` — per-message image cap, `includeLinkImages`, `exportExternalMedia`
+- `showDeleteOption` — unlocks deletion commands/buttons
+- `showChatBarEntry` — the browser button, `showArchiveButton` — the dashboard button
+- `captureOnStart` — sweep the live DM list at startup, `hideQuestStuff`
+- Values you had under the old DMArchiver plugin move over automatically on first start.
 
-# GhostDms — retired (merged into DmLedger)
+## MsgPurge (companion plugin, `msgPurge/`)
 
-GhostDms used to be the tool for finding DMs Discord hides from your sidebar.
-Every one of its features — data-package import, deep server-roster search,
-people-cache search, open-by-ID, paced bulk restore, placeholder-name
-resolution — now lives in the **DmLedger browser** (`/dm-ledger`), with the
-same read-only guarantees and the same pacing rules. The old code remains in
-this repo's git history (`git log -- ghostDms/`) if you want to diff or revive
-it. Your existing ledger (same Vencord DataStore keys) is untouched.
----
-
-# DmLedger (also in this repo: `dmLedger/`, plus a `ledger.ts` copy inside each plugin)
-
-The memory these three plugins were missing — and now its own browser. Discord's live DM list caps at roughly 100 channels, and it's *sticky* — the conversations you chat in most never page out, so restored/hidden DMs only surface a few at a time. DmLedger fixes the client side of that: it **permanently records every DM partner (user id + channel id + display name) this client ever sees**, in Vencord's own IndexedDB (DataStore). Nothing leaves your machine, and it never *sends* anything.
-The `/dm-ledger` browser window **can** restore/open channels or forget rows — only when you click it.
-It also handles data-package import (absorbed from the retired GhostDms plugin): point it at your unzipped Discord data export (the
-folder picker remembers the path), and every DM conversation the package contains becomes a
-permanent roster row (read-only on the package; group DMs are reported and skipped).
-
-Copy the `dmLedger/` folder into `Vencord/src/userplugins/dmLedger/` and build like the others. The other three plugins each carry their own copy of `ledger.ts` (same shared storage), so **they work with or without DmLedger installed** — install DmLedger to also capture every DM you *send in*, passively, at send time.
-
-- 🧠 **Survives restarts and the eviction window** — partners whose channel Discord no longer lists anywhere stay in the roster forever (first-seen/last-seen, friendship-at-record-time, which plugin saw them)
-- ✍️ **Passive capture** — every DM message you send records its recipient instantly; a startup sweep records the current live DM list; package imports, restores, and lookups in the other plugins all contribute records too
-- 🔗 **Every consumer reads it**: **DMArchiver**'s export map includes ledger-only DMs (so "export everything" isn't capped by Discord's ~100 list anymore), **MsgPurge**'s picker and explicit channel-id targets resolve through it
-- 🪟 **Browse it directly** — `/dm-ledger` or the 🔍 button in the DM chat bar opens the same floating window: search everyone by name/id/channel-id, filters (All / Hidden / Unnamed), per-row **Open** (routes instantly for known channels, create-or-get for the ones Discord no longer lists), **Restore**, **Copy** ids, **Forget**; batch **Select all → Restore / Resolve names / Forget** with paced requests, progress and Stop; **Sweep live** to record the current DM list in one shot; **Export JSON** copies the entire roster (ids, names, friendship, first/last seen) to your clipboard for your own records. Once you've imported + restored everything once, this window alone finds and opens any past DM — including first-time backfill (package import) and finding never-DM'd people (deep server-roster search).
-- 🧹 Forget one partner or wipe the whole roster via `ledgerForget(id)` / `ledgerWipe()` in the console (or the Forget button); clearing your Discord app data also clears it
-
----
-
-### The browser (`/dm-ledger`, or the search icon in any DM's chat bar)
-
-A floating, resizable window over the roster. Every button has a hover tooltip;
-short version:
-
-- **Open** — jumps to the DM; if Discord dropped the channel from your list it first re-opens it (same channel, history intact)
-- **Restore** — asks Discord to put the DM back in your sidebar (create-or-get; creates nothing new, sends nothing)
-- **Copy** — this partner's user id + channel id as JSON on your clipboard
-- **Forget** — deletes only the ledger row; nothing on Discord is touched
-- **Sweep live** — one API call that records Discord's current DM list into the roster
-- **Import package** — reads your unzipped "Request all my Data" export and remembers *every* DM it contains, including ones hidden from the live list (the scanner absorbed from GhostDms, same read-only code)
-- Filters **All / Hidden / Unnamed**, search over name, user id, channel id, or source; batch restore (~1/s paced, Stop works) and name resolve (~1.1 s paced); **Export JSON** copies the whole roster
-
-- **Find someone you've NEVER DM'd** — a second search box: local-cache matches show instantly (zero API), **Search all servers** sweeps every server's full member roster server-side (paced, Stop + rate-limit honest), **Open by ID** opens a DM straight from an exact snowflake. Whatever you open gets remembered in the ledger
-
-Once your package is imported, the browser **is** GhostDms now — its deep server-roster search lives here as
-`findPeople.ts`, and the original plugin has been retired (code kept in git
-history for anyone who wants to diff or revive it).
+Standalone rate-limited self-delete tool with a DM picker; it shares the same
+ledger store (via its own `ledger.ts` copy — all copies use identical DataStore
+keys, so every plugin reads and feeds the same roster). Clone `msgPurge/` the
+same way if you want it as its own plugin; DmLedger's own deletion covers most
+cases without it.
 
 ## Notes & caveats
 
-- **Deletion is real and irreversible.** Own messages only — enforced by author-ID filter on every delete. Fully offline-tested, but test on a throwaway account first.
-- Exported files are named `username_messageId_originalname.ext`.
-- `dmarchiver_skipped_*.txt` explains every skipped URL (dead link, blocked type, limit hit…).
-- Using client mods technically violates Discord ToS (universally tolerated in practice, but you know your account).
-- This is a **userplugin** — it lives in `src/userplugins/`, which is gitignored by Vencord itself, so it survives `git pull` on your Vencord clone.
+- The ledger is **local to this machine + client** (Vencord DataStore / IndexedDB). It is not synced; import a data package on a new machine to backfill.
+- `restore` cannot revive a DM where the other account deleted theirs and Discord lost the mapping — the id is kept, but the create-or-get endpoint decides.
+- Data-package import reads only `Relationship`/channel files; it never uploads or writes to Discord.
+- Deletion is rate-limited per Discord's own limits and always restricted to `author.id === you`.
+- Old GhostDms functionality (hidden-DM finding, package import, restore) lives in the browser now; the original code stays in `git log -- ghostDms/`.
 
 ## License
 
-GPL-3.0-or-later
+GPL-3.0-or-later, same as Vencord.

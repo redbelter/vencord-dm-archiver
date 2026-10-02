@@ -290,7 +290,7 @@ function LedgerBrowser({ close }: { close: () => void; }) {
         const fresh = next.filter(r => !slot.has(r.userId));
         return kept.concat(fresh);
     });
-    const visible = applyFilter(rows.filter(r => matchesQuery(r, query)), filter);
+    const visible = rows;
     const hiddenCount = rows.filter(r => r.isFriend === false).length;
     const unnamedCount = rows.filter(isUnnamed).length;
 
@@ -743,7 +743,7 @@ function LedgerBrowser({ close }: { close: () => void; }) {
                 ))}
                 {!visible.length && (
                     <Text variant="text-sm/normal">
-                        {rows.length ? "No rows match the current search/filter." : "The ledger is empty so far — DM someone, hit 'Sweep live', import your Discord data package above, or just use msgPurge/dmArchiver and records will accumulate here automatically."}
+                        {rows.length ? "No rows match the current search/filter." : "The ledger is empty so far — DM someone, hit 'Sweep live', import your Discord data package above, or just use MsgPurge / the archive dashboard and records will accumulate here automatically."}
                     </Text>
                 )}
             </div>

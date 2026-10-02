@@ -13,7 +13,6 @@ import type { PluginNative } from "@utils/types";
 import { EmbedJSON, MessageAttachment, MessageJSON } from "@vencord/discord-types";
 import { ChannelStore, Constants, MessageStore, RestAPI, UserStore } from "@webpack/common";
 
-import { ledgerDms, ledgerNameFor, ledgerRefresh, recordDm, recordName } from "./ledger";
 import {
     formatSkippedMediaReport,
     getFileName,
@@ -22,11 +21,12 @@ import {
     SkippedMediaEntry,
     URL_IMAGE_EXT_RE,
     UrlCandidate,
-} from "./utils";
+} from "./archiveUtils";
+import { ledgerDms, ledgerNameFor, ledgerRefresh, recordDm, recordName } from "./ledger";
 
-const Native = VencordNative.pluginHelpers.DMArchiver as PluginNative<typeof import("./native")>;
+const Native = VencordNative.pluginHelpers.DmLedger as PluginNative<typeof import("./native")>;
 
-export const log = new Logger("DMArchiver");
+export const log = new Logger("DmLedger/Archive");
 
 export interface ArchiverSettings {
     downloadFolder: string;

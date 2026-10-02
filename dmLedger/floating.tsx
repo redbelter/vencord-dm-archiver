@@ -66,18 +66,23 @@ const store = {
 // shared with the browser UI (last package path etc.) — NEVER bare localStorage
 export const safeStore = store;
 
-let floating: { root: any; el: HTMLElement; handle: FloatingHandle; } | null = null;
+// Windows are keyed by storageKey so the roster browser and the archive
+// dashboard coexist (each keeps its own toggle/size memory).
+const floatingByKey = new Map<string, { root: any; el: HTMLElement; handle: FloatingHandle; }>();
 
-export function closeFloating(): boolean {
-    if (!floating) return false;
-    floating.handle.close();
+/** close the open window registered under this storageKey (default: ledger's) */
+export function closeFloating(key = "DmLedger"): boolean {
+    const f = floatingByKey.get(key);
+    if (!f) return false;
+    f.handle.close();
     return true;
 }
 
 /** true when the open window was just hidden/shown (toggle) instead of created */
 export function openFloating(opts: FloatingOpts): boolean {
-    if (floating) {
-        floating.handle.toggle();
+    const existing = floatingByKey.get(opts.storageKey);
+    if (existing) {
+        existing.handle.toggle();
         return true;
     }
     if (typeof document === "undefined" || typeof createRoot !== "function") return false;
@@ -134,12 +139,12 @@ export function openFloating(opts: FloatingOpts): boolean {
         try { contentRoot.unmount(); } catch { /* already gone */ }
         el.remove();
         window.removeEventListener("keydown", onKey);
-        floating = null;
+        floatingByKey.delete(opts.storageKey);
     };
 
     document.body.appendChild(el);
     window.addEventListener("keydown", onKey);
-    floating = { root: contentRoot, el, handle };
+    floatingByKey.set(opts.storageKey, { root: contentRoot, el, handle });
 
     // titlebar: drag + hide/close buttons
     const bar = document.createElement("div");
