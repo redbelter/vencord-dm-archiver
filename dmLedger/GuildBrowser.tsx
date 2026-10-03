@@ -34,6 +34,7 @@ import {
     guildLedgerWipe,
     type LedgerGuild,
     recordLiveGuilds,
+    requestMemberCatch,
 } from "./guildLedger";
 
 // native (main-process) bridge: reads a guild-ledger.json backfill file from
@@ -91,10 +92,18 @@ export function guildLine(g: LedgerGuild): string {
     const when = `${fmtDay(g.firstSeenDate ?? g.firstSeen)} → ${isMemberNow(g) ? "here now" : fmtDay(g.lastSeenDate ?? g.lastSeen)}`;
     const bits = [when];
     if (g.memberCount != null) bits.push(`~${g.memberCount} members`);
+    if (g.memberSnapshot?.length) bits.push(`${g.memberSnapshot.length} name(s) saved`);
     if (g.strongEvents) bits.push(`${g.strongEvents} activity events`);
     if (g.source === "backfill") bits.push("backfilled");
     if (g.owner) bits.push("you owned it");
     return bits.join(" · ");
+}
+
+/** icon hash -> CDN url (works after you leave, until the server deletes its icon) */
+export function guildIconUrl(g: LedgerGuild): string | null {
+    if (!g.icon) return null;
+    const anim = g.icon.startsWith("a_");
+    return `https://cdn.discordapp.com/icons/${g.guildId}/${g.icon}.${anim ? "gif" : "png"}`;
 }
 
 // ─── the panel ───────────────────────────────────────────────────────────────
@@ -233,10 +242,36 @@ function GuildPanel({ close }: { close: () => void; }) {
                 )}
                 {visible.map(g => (
                     <div key={g.guildId} style={{ display: "flex", alignItems: "center", gap: "6px", padding: "4px 6px", marginTop: "4px", background: "var(--bg-overlay-2, rgba(128,128,128,.08))", borderRadius: "6px" }}>
+                        {guildIconUrl(g)
+                            ? <img src={guildIconUrl(g)!} alt="" title={g.description ? g.description.slice(0, 140) : g.name ?? g.guildId}
+                                style={{ width: 24, height: 24, borderRadius: "50%", flexShrink: 0, objectFit: "cover" }} />
+                            : <div style={{ width: 24, height: 24, borderRadius: "50%", flexShrink: 0, background: "var(--bg-overlay-4, rgba(128,128,128,.2))" }} />}
                         <div style={{ flex: 1, minWidth: 0 }}>
                             <Text variant="text-sm/medium">{g.name ?? "Unknown server"}</Text>
                             <div><Text variant="text-xs/normal">{guildLine(g)}</Text></div>
                         </div>
+                        {isMemberNow(g) && (
+                            <Button size="xs" variant="primary"
+                                title="Ask Discord for this server's member list right now (one gateway request, up to 1000 members) and save the names permanently — before you ever leave. Names already saved are never duplicated."
+                                onClick={() => {
+                                    const sent = requestMemberCatch(g.guildId);
+                                    toast(sent
+                                        ? "Roster request sent — chunks save automatically as they land (check back in a few seconds)"
+                                        : "Couldn't request (server not in your list?)", !sent);
+                                }}>
+                                Catch roster
+                            </Button>
+                        )}
+                        {!!g.memberSnapshot?.length && (
+                            <Button size="xs" variant="secondary"
+                                title="Copy the saved member names (id + name JSON) — this is the 'who was there' you caught while you were a member"
+                                onClick={() => {
+                                    copyToClipboard(JSON.stringify(g.memberSnapshot?.map(([id, name]) => ({ id, name })), null, 2));
+                                    toast(`Copied ${g.memberSnapshot?.length} member(s)`);
+                                }}>
+                                Roster Copy
+                            </Button>
+                        )}
                         <Button size="xs" variant="secondary"
                             title="Copy id + name JSON — then paste into disboard/discords.com search to look for an invite"
                             onClick={() => { copyToClipboard(JSON.stringify({ id: g.guildId, name: g.name ?? null }, null, 2)); toast("Copied — now search the name for an invite"); }}>

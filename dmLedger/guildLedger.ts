@@ -17,9 +17,13 @@
 // GuildStore still has it RIGHT NOW.
 
 import * as DataStore from "@api/DataStore";
-import { GuildStore, UserStore } from "@webpack/common";
+import { FluxDispatcher, GuildMemberStore, GuildStore, UserStore } from "@webpack/common";
 
 const KEY_PREFIX = "GuildLedger.v1.";
+
+// hard cap on a captured roster, per server. Discord's chunk request itself
+// caps at 1000, so this only bounds passive drift (members joining over time).
+export const MEMBER_CAP = 1000;
 
 export interface LedgerGuild {
     guildId: string;
@@ -29,6 +33,13 @@ export interface LedgerGuild {
     firstSeen: number; // epoch ms
     lastSeen: number;
     source: string; // "live" | "left" | "backfill"
+    icon?: string; // icon hash while we could see it — renders forever via CDN while the server exists
+    description?: string;
+    // "who was there": [id, displayName] pairs captured while we were a member.
+    // Historical rosters of ALREADY-left servers cannot be recovered (Discord
+    // never sends them), so the ledger grabs them before you leave.
+    memberSnapshot?: Array<[string, string]>;
+    snapshotAt?: number; // epoch ms of the last snapshot growth
     // backfill extras (coarser than live captures)
     firstSeenDate?: string; // "2018-01-01" from telemetry
     lastSeenDate?: string;
@@ -51,6 +62,8 @@ function mergeStored(stored: LedgerGuild): void {
         name: fresh.name ?? stored.name,
         memberCount: fresh.memberCount ?? stored.memberCount,
         owner: fresh.owner || stored.owner,
+        icon: fresh.icon ?? stored.icon,
+        description: fresh.description ?? stored.description,
         firstSeen: Math.min(fresh.firstSeen, stored.firstSeen),
         lastSeen: Math.max(fresh.lastSeen, stored.lastSeen),
         // "live"/"left" beat "backfill" — a real capture is stronger evidence
@@ -58,7 +71,23 @@ function mergeStored(stored: LedgerGuild): void {
         firstSeenDate: stored.firstSeenDate ?? fresh.firstSeenDate,
         lastSeenDate: fresh.lastSeenDate ?? stored.lastSeenDate,
         strongEvents: Math.max(fresh.strongEvents ?? 0, stored.strongEvents ?? 0) || undefined,
+        memberSnapshot: mergeSnapshots(fresh.memberSnapshot, stored.memberSnapshot),
+        snapshotAt: Math.max(fresh.snapshotAt ?? 0, stored.snapshotAt ?? 0) || undefined,
     });
+}
+
+/** union two [id, name] snapshots — FIRST arg's names win for shared ids,
+ *  second arg only contributes NEW ids. Sorted by id so roster row order is
+ *  deterministic across refreshes/restarts (hydrate order otherwise drifts).
+ *  Callers pass newer-wins material first: (memory, disk) when hydrating,
+ *  (existing, fresh chunk) when recording. Capped at MEMBER_CAP. */
+export function mergeSnapshots(a?: Array<[string, string]>, b?: Array<[string, string]>): Array<[string, string]> | undefined {
+    if (!a?.length) return b?.length ? [...b].sort((x, y) => x[0] < y[0] ? -1 : 1).slice(0, MEMBER_CAP) : undefined;
+    if (!b?.length) return [...a].sort((x, y) => x[0] < y[0] ? -1 : 1).slice(0, MEMBER_CAP);
+    const seen = new Map<string, string>();
+    for (const [id, nm] of a) seen.set(id, nm); // first arg wins
+    for (const [id, nm] of b) if (!seen.has(id)) seen.set(id, nm); // new appended
+    return [...seen].sort((x, y) => x[0] < y[0] ? -1 : 1).slice(0, MEMBER_CAP);
 }
 
 async function readOnce(): Promise<void> {
@@ -94,6 +123,7 @@ export function guildLedgerRecord(g: Partial<LedgerGuild> & { guildId: string, s
     const now = Date.now();
     const prev = guildCache.get(g.guildId);
     const backfillStart = Date.parse(g.firstSeenDate ?? "") || Infinity;
+    const snapshot = g.memberSnapshot !== undefined ? mergeSnapshots(prev?.memberSnapshot, g.memberSnapshot) : prev?.memberSnapshot;
     const rec: LedgerGuild = {
         guildId: g.guildId,
         name: g.name ?? prev?.name,
@@ -102,9 +132,14 @@ export function guildLedgerRecord(g: Partial<LedgerGuild> & { guildId: string, s
         firstSeen: Math.min(prev?.firstSeen ?? now, g.firstSeen ?? now, backfillStart),
         lastSeen: Math.max(prev?.lastSeen ?? 0, g.lastSeen ?? now),
         source: g.source ?? prev?.source ?? "live",
+        icon: g.icon ?? prev?.icon,
+        description: g.description ?? prev?.description,
         firstSeenDate: g.firstSeenDate ?? prev?.firstSeenDate,
         lastSeenDate: g.lastSeenDate ?? prev?.lastSeenDate,
         strongEvents: Math.max(prev?.strongEvents ?? 0, g.strongEvents ?? 0) || undefined,
+        memberSnapshot: snapshot,
+        // only stamp when THIS call actually contributed roster material
+        snapshotAt: g.memberSnapshot?.length ? now : prev?.snapshotAt,
     };
     guildCache.set(g.guildId, rec);
     enqueue(() => DataStore.set(KEY_PREFIX + g.guildId, rec));
@@ -145,12 +180,92 @@ export function recordLiveGuilds(): number {
             guildLedgerRecord({
                 guildId: id, name: g.name, memberCount: (g as any).member_count ?? (g as any).memberCount,
                 owner: g.ownerId === UserStore.getCurrentUser()?.id ? true : undefined,
+                icon: (g as any).icon ?? undefined,
+                description: (g as any).description ?? undefined,
                 source: "live",
             });
+            harvestGuildMembers(id);
             n++;
         }
     } catch { /* store not ready yet */ }
     return n;
+}
+
+// ─── "who was there": member snapshots ──────────────────────────────────────
+//
+// Discord NEVER sends the roster of a server you're not in — so the only
+// moment to save "who was there" is while you still are. Three capture paths,
+// all cheap:
+//   harvestGuildMembers()  — read what GuildMemberStore already has (zero API)
+//   onMemberChunks()       — ride chunks Discord fetches for member lists (zero API)
+//   requestMemberCatch()   — actively ask for a 1000-member chunk (ONE gateway
+//                            op; the same mechanism implicitRelationships uses)
+
+function displayName(m: any): string {
+    const u = m?.user ?? m;
+    return String(u?.global_name ?? u?.username ?? u?.id ?? "") || String(u?.id ?? "");
+}
+
+/** Merge [id, name] pairs into a guild's snapshot; returns how many were NEW. */
+export function addSnapshotMembers(guildId: string, members: any[]): number {
+    const prev = guildLedgerGet(guildId);
+    if (!members?.length) return 0;
+    const known = new Set((prev?.memberSnapshot ?? []).map(([id]) => id));
+    const fresh: Array<[string, string]> = [];
+    for (const m of members) {
+        const id = String(m?.user?.id ?? m?.id ?? "");
+        if (!/^\d{17,20}$/.test(id) || known.has(id)) continue;
+        known.add(id);
+        fresh.push([id, displayName(m)]);
+    }
+    if (!fresh.length) return 0;
+    guildLedgerRecord({ guildId, memberSnapshot: fresh });
+    return fresh.length;
+}
+
+/** Save everything GuildMemberStore currently caches for a guild. Zero API. */
+export function harvestGuildMembers(guildId: string): number {
+    try {
+        const members = GuildMemberStore.getMembers?.(guildId) ?? [];
+        return addSnapshotMembers(guildId, members);
+    } catch { return 0; }
+}
+
+/**
+ * Flux handler for GUILD_MEMBERS_CHUNK_BATCH (payload: { chunks: [{guild_id,
+ * members, nonce}] }). Passive: whenever Discord loads a member list for ANY
+ * reason, those members land in the ledger of a server we're a member of.
+ * Chunks for servers we don't belong to are ignored (can't be authoritative
+ * "who was there" for a server GuildStore doesn't list anyway).
+ */
+export function onMemberChunks(e: any): void {
+    try {
+        for (const c of e?.chunks ?? []) {
+            const gid = c?.guild_id ?? c?.guildId;
+            if (!gid || !GuildStore.getGuild?.(gid)) continue;
+            addSnapshotMembers(String(gid), c?.members ?? []);
+        }
+    } catch { /* malformed chunk — nothing safe to save */ }
+}
+
+/**
+ * Ask the gateway for up to `count` members of a guild we're in (OP 8 — one
+ * request, Discord's own member-search machinery; NOT REST paging, which would
+ * be a call per 1000 members and rate-limit hostile). Chunks arrive via
+ * GUILD_MEMBERS_CHUNK_BATCH and onMemberChunks() saves them.
+ * Returns true if the request was dispatched.
+ */
+export function requestMemberCatch(guildId: string, count = 1000): boolean {
+    if (!GuildStore.getGuild?.(guildId)) return false;
+    try {
+        FluxDispatcher.dispatch({
+            type: "GUILD_MEMBERS_REQUEST",
+            guildIds: [guildId],
+            limit: Math.min(count, 1000),
+            nonce: `GuildLedger-${guildId}`,
+        });
+        return true;
+    } catch { return false; }
 }
 
 export async function guildLedgerWipe(): Promise<void> {

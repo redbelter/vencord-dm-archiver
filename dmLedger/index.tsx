@@ -25,8 +25,9 @@
 import { addChatBarButton, ChatBarButton, ChatBarButtonFactory, removeChatBarButton } from "@api/ChatButtons";
 import { ApplicationCommandOptionType, findOption } from "@api/Commands";
 import { addMessagePreSendListener, removeMessagePreSendListener } from "@api/MessageEvents";
+import { addServerListElement, removeServerListElement, ServerListRenderPosition } from "@api/ServerList";
 import { definePluginSettings, SettingsStore } from "@api/Settings";
-import { FolderIcon, SearchIcon } from "@components/Icons";
+import { FolderIcon, SearchIcon, WebsiteIcon } from "@components/Icons";
 import { Logger } from "@utils/Logger";
 import definePlugin, { OptionType } from "@utils/types";
 import { ChannelStore, GuildStore, RestAPI, SelectedChannelStore, showToast, UserStore } from "@webpack/common";
@@ -36,7 +37,7 @@ import { closeArchiveDashboard, openArchiveDashboard } from "./ArchiveDashboard"
 import { openLedgerBrowser } from "./Browser";
 import { closeFloating } from "./floating";
 import { closeGuildBrowser, openGuildBrowser } from "./GuildBrowser";
-import { guildLedgerCount, guildLedgerReady, guildLedgerRecord, recordLiveGuilds } from "./guildLedger";
+import { guildLedgerCount, guildLedgerReady, guildLedgerRecord, harvestGuildMembers, onMemberChunks, recordLiveGuilds } from "./guildLedger";
 import { ledgerDmCount, ledgerNameCount, ledgerReady, recordDm, recordName } from "./ledger";
 
 const log = new Logger("DmLedger");
@@ -50,6 +51,11 @@ const settings = definePluginSettings({
     showArchiveButton: {
         type: OptionType.BOOLEAN,
         description: "Show the Archive (📁) button in DM chat bars (opens the export dashboard).",
+        default: true,
+    },
+    showGuildLedgerButton: {
+        type: OptionType.BOOLEAN,
+        description: "Show the \"ledger\" button above the server list rail (opens the GuildLedger window).",
         default: true,
     },
     captureOnStart: {
@@ -259,15 +265,19 @@ const ArchiveButton: ChatBarButtonFactory = ({ isMainChat, channel }) => {
 
 // ─── Plugin ──────────────────────────────────────────────────────────────────
 
-/** GUILD_CREATE: we're a member — record (name/count/owner) immediately. */
+/** GUILD_CREATE / GUILD_UPDATE: we're a member — record metadata + cache. */
 function onGuildCreate(g: any): void {
     if (!g?.id || typeof g.id !== "string") return;
     guildLedgerRecord({
         guildId: g.id, name: g.name,
         memberCount: typeof g.member_count === "number" ? g.member_count : undefined,
         owner: g.owner === true || g.ownerId === UserStore.getCurrentUser()?.id ? true : undefined,
+        icon: g.icon ?? undefined,
+        description: g.description ?? undefined,
         source: "live",
     });
+    // whatever member profiles Discord already cached for this guild
+    harvestGuildMembers(g.id);
 }
 
 /**
@@ -278,12 +288,34 @@ function onGuildCreate(g: any): void {
 function onGuildDelete(e: { guild_id: string, unavailable?: boolean }): void {
     if (e?.unavailable || !e?.guild_id) return;
     const g = GuildStore.getGuild(e.guild_id);
+    // LAST CHANCE for "who was there": harvest the member cache before it dies
+    const caught = harvestGuildMembers(e.guild_id);
     guildLedgerRecord({
         guildId: e.guild_id, name: g?.name, memberCount: (g as any)?.member_count ?? (g as any)?.memberCount,
+        icon: (g as any)?.icon ?? undefined,
         source: "left",
     });
-    log.info(`guild left — "${g?.name ?? e.guild_id}" stays in the ledger`);
+    log.info(`guild left — "${g?.name ?? e.guild_id}" stays in the ledger${caught ? ` (roster caught ${caught})` : ""}`);
 }
+
+const GuildLedgerRailButton = () => (
+    <span
+        id="vc-guildledger-button"
+        role="button"
+        tabIndex={0}
+        title="GuildLedger — every server you've ever been in"
+        onClick={() => openGuildBrowser()}
+        onKeyDown={e => { if (e.key === "Enter" || e.key === " ") openGuildBrowser(); }}
+        style={{
+            display: "flex", alignItems: "center", justifyContent: "center", gap: "4px",
+            width: "100%", boxSizing: "border-box",
+            padding: "0 0.5em", fontSize: "12px", fontWeight: 600, textTransform: "uppercase",
+            color: "var(--text-default)", cursor: "pointer", whiteSpace: "nowrap",
+        }}
+    >
+        <WebsiteIcon height={14} width={14} /> ledger {guildLedgerCount()}
+    </span>
+);
 
 export default definePlugin({
     name: "DmLedger",
@@ -298,6 +330,7 @@ export default definePlugin({
         await guildLedgerReady();
         addMessagePreSendListener(onSend);
         addChatBarButton("dm-ledger-archive", ArchiveButton, FolderIcon);
+        if (settings.store.showGuildLedgerButton) addServerListElement(ServerListRenderPosition.Above, GuildLedgerRailButton);
         if (settings.store.captureOnStart) sweepLive().catch(() => undefined);
         // zero-cost guild capture: read local store snapshot at startup
         recordLiveGuilds();
@@ -314,6 +347,7 @@ export default definePlugin({
     stop() {
         removeMessagePreSendListener(onSend);
         removeChatBarButton("dm-ledger-archive");
+        removeServerListElement(ServerListRenderPosition.Above, GuildLedgerRailButton);
         applyQuestHiding(false);
         applyUpsellHiding(false);
         applyActiveNowHiding(false);
@@ -324,7 +358,9 @@ export default definePlugin({
 
     flux: {
         GUILD_CREATE: onGuildCreate,
+        GUILD_UPDATE: onGuildCreate, // icon/name/description changes refresh the record
         GUILD_DELETE: onGuildDelete,
+        GUILD_MEMBERS_CHUNK_BATCH: onMemberChunks, // passive "who was there" ride-along
     },
 
     chatBarButton: {

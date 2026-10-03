@@ -19,7 +19,8 @@ A [Vencord](https://github.com/Vendicated/Vencord) userplugin that remembers **e
   - full text transcripts as formatted `.txt`
   - resume-safe: existing files are skipped and skipped media gets a written report
   - export map unions Discord's list **and** ledger-known DMs — partners whose channels fell out of the sidebar list still resolve by remembered channel id
-- 🏛️ **GuildLedger** (`/guild-ledger`) — Discord *deletes* servers from your client the moment you leave; the guild ledger is the twin roster that never forgets. Every server visible at startup, every `GUILD_CREATE`, and the last moment of every `GUILD_DELETE` is recorded locally (zero API calls). The floating window lists current vs gone with dates, evidence strength, and member counts, filters (In / Gone / Unnamed), search, export, Forget/Clear.
+- 🏛️ **GuildLedger** (`/guild-ledger`, or the **`ledger` button above your server rail**) — Discord *deletes* servers from your client the moment you leave; the guild ledger is the twin roster that never forgets. Every server visible at startup, every `GUILD_CREATE`/`GUILD_UPDATE`, and the last moment of every `GUILD_DELETE` is recorded locally (zero API calls): name, member count, **icon** (hash → CDN thumbnail, still renders after you leave), owner flag, dates, evidence strength. The floating window lists current vs gone, filters (In / Gone / Unnamed), search, export, Forget/Clear.
+  - **"Who was there" — member snapshots**: Discord never sends the roster of a server you aren't in, so the ledger captures it *before* you leave. It silently rides along with member lists Discord already fetches (zero API), sweeps warm member caches at startup/leave, and each current-server row has a **Catch roster** button that requests up to 1000 members with a single gateway op (the same OP-8 mechanism Vencord's own implicitRelationships uses). Names dedup by id, cap at 1000/server, and a **Roster Copy** button hands them to you as `{id, name}` JSON. Left servers keep whatever was caught while you were a member — gone servers can't be backfilled retroactively.
   - **Backfill from your data package**: Discord's `Activity/` telemetry embeds `guild_id` (and often `guild_name` + `guild_size`) on hundreds of thousands of events — `userplugins-test/guild_backfill.py` mines them into a `guild-ledger.json` (ids, names, first/last dates, strong-presence counts like voice/message events). Import it in the window. This is a *floor* on your history, not a census — telemetry only covers recorded time windows, and Discord resolves no names for servers you left.
 - 🗑️ **Self-deletion** (optional, double-gated by `showDeleteOption`) — batch-delete **only your own** messages, rate-limited with retry; peer messages are never touched
 - 🚫 Optional Quest-UI hiding
@@ -60,6 +61,7 @@ Then: **Settings → Vencord → Plugins → DmLedger** (search "dm").
 - `maxImages` — per-message image cap, `includeLinkImages`, `exportExternalMedia`
 - `showDeleteOption` — unlocks deletion commands/buttons
 - `showChatBarEntry` — the browser button, `showArchiveButton` — the dashboard button
+- `showGuildLedgerButton` — the `ledger` button above the server rail (opens GuildLedger)
 - `captureOnStart` — sweep the live DM list at startup, `hideQuestStuff`
 - `hideActiveNow` — hide the entire "Active Now" column on the Friends page
 - `hideUpsellPrompts` — hides "Gift Nitro" buttons, the "try Nitro" ad card, and "connect your accounts" nudges (Nitro/Connections settings pages stay reachable)
