@@ -1,6 +1,6 @@
 /*
  * Vencord, a Discord client mod
- * Copyright (c) 2026 redbelter
+ * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
@@ -14,7 +14,7 @@ import { definePluginSettings } from "@api/Settings";
 import { DeleteIcon } from "@components/Icons";
 import { Logger } from "@utils/Logger";
 import definePlugin, { OptionType } from "@utils/types";
-import { SelectedChannelStore, Toasts } from "@webpack/common";
+import { SelectedChannelStore, showToast } from "@webpack/common";
 
 import { PurgeEngine, type PurgeScope,setChannelIdProvider } from "./engine";
 import { closePurgeControl, openPurgeControl } from "./UI";
@@ -93,8 +93,8 @@ function resolveCurrentChannelId(ctxChannelId?: string | number): string | undef
     return undefined;
 }
 
-function toast(message: string, type = Toasts.Type.MESSAGE) {
-    Toasts.show({ message, id: Toasts.genId(), type });
+function toast(message: string, type: "message" | "success" | "failure" = "message") {
+    showToast(message, type);
 }
 
 // ─── persisted progress ──────────────────────────────────────────────────────
@@ -229,7 +229,7 @@ export default definePlugin({
         ],
         execute: (args, ctx) => {
             if (!settings.store.enabled) {
-                toast("MsgPurge is disabled — enable it in Settings → Plugins → MsgPurge.", Toasts.Type.FAILURE);
+                toast("MsgPurge is disabled — enable it in Settings → Plugins → MsgPurge.", "failure");
                 return;
             }
             const scopeArg = (findOption(args, "scope") as string | undefined)?.trim();
@@ -241,12 +241,12 @@ export default definePlugin({
         description: "Immediately purge your messages in THIS channel at the configured rate (all messages)",
         execute: (_args, ctx) => {
             if (!settings.store.enabled) {
-                toast("MsgPurge is disabled — enable it in Settings → Plugins → MsgPurge.", Toasts.Type.FAILURE);
+                toast("MsgPurge is disabled — enable it in Settings → Plugins → MsgPurge.", "failure");
                 return;
             }
             const channelId = resolveCurrentChannelId(ctx.channel?.id as string | undefined);
             if (!channelId) {
-                toast("Could not resolve the current channel.", Toasts.Type.FAILURE);
+                toast("Could not resolve the current channel.", "failure");
                 return;
             }
             engine.start({

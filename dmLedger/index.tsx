@@ -300,7 +300,7 @@ export default definePlugin({
         addChatBarButton("dm-ledger-archive", ArchiveButton, FolderIcon);
         if (settings.store.captureOnStart) sweepLive().catch(() => undefined);
         // zero-cost guild capture: read local store snapshot at startup
-        void 0;
+        recordLiveGuilds();
         applyQuestHiding(settings.store.hideQuestStuff);
         applyUpsellHiding(settings.store.hideUpsellPrompts);
         applyActiveNowHiding(settings.store.hideActiveNow);
