@@ -261,6 +261,9 @@ export function requestMemberCatch(guildId: string, count = 1000): boolean {
         FluxDispatcher.dispatch({
             type: "GUILD_MEMBERS_REQUEST",
             guildIds: [guildId],
+            userIds: [], // fields proven on live Discord by implicitRelationships:
+            presences: true, // without them the gateway may never answer the chunk
+            query: "",
             limit: Math.min(count, 1000),
             nonce: `GuildLedger-${guildId}`,
         });
