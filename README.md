@@ -19,6 +19,8 @@ A [Vencord](https://github.com/Vendicated/Vencord) userplugin that remembers **e
   - full text transcripts as formatted `.txt`
   - resume-safe: existing files are skipped and skipped media gets a written report
   - export map unions Discord's list **and** ledger-known DMs — partners whose channels fell out of the sidebar list still resolve by remembered channel id
+- 🏛️ **GuildLedger** (`/guild-ledger`) — Discord *deletes* servers from your client the moment you leave; the guild ledger is the twin roster that never forgets. Every server visible at startup, every `GUILD_CREATE`, and the last moment of every `GUILD_DELETE` is recorded locally (zero API calls). The floating window lists current vs gone with dates, evidence strength, and member counts, filters (In / Gone / Unnamed), search, export, Forget/Clear.
+  - **Backfill from your data package**: Discord's `Activity/` telemetry embeds `guild_id` (and often `guild_name` + `guild_size`) on hundreds of thousands of events — `userplugins-test/guild_backfill.py` mines them into a `guild-ledger.json` (ids, names, first/last dates, strong-presence counts like voice/message events). Import it in the window. This is a *floor* on your history, not a census — telemetry only covers recorded time windows, and Discord resolves no names for servers you left.
 - 🗑️ **Self-deletion** (optional, double-gated by `showDeleteOption`) — batch-delete **only your own** messages, rate-limited with retry; peer messages are never touched
 - 🚫 Optional Quest-UI hiding
 
@@ -42,6 +44,7 @@ Then: **Settings → Vencord → Plugins → DmLedger** (search "dm").
 | Command | What |
 |---|---|
 | `/dm-ledger` | Open the roster browser |
+| `/guild-ledger` | Open the guild ledger (every server you've ever been in) |
 | `/dm-dashboard` | Open the archive dashboard |
 | `/dm-export <user> [days]` | Export DM text+media to the download folder |
 | `/dm-export-all [days]` | Export every DM in the map |

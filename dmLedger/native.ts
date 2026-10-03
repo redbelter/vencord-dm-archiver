@@ -35,6 +35,33 @@ export interface PackageScan {
     totalChannelDirs?: number;
 }
 
+export interface GuildLedgerFile {
+    ok: boolean;
+    error?: string;
+    rows?: unknown[];
+}
+
+/**
+ * Read a guild-ledger.json backfill file (the archaeology export from
+ * Activity/ telemetry: [{id,name,firstSeen,lastSeen,strongEvents,guildSize,status}]).
+ * Validates it's an array of guild rows; read-only.
+ */
+export async function readGuildLedgerFile(_event: any, pathRaw: unknown): Promise<GuildLedgerFile> {
+    if (typeof pathRaw !== "string" || !pathRaw.trim()) return { ok: false, error: "no path given" };
+    const path = pathRaw.trim().replace(/^"|"$/g, "");
+    if (!existsSync(path)) return { ok: false, error: `not found: ${path}` };
+    let data: unknown;
+    try {
+        data = JSON.parse(readFileSync(path, "utf8"));
+    } catch (e) {
+        return { ok: false, error: `not valid JSON: ${String(e).slice(0, 80)}` };
+    }
+    if (!Array.isArray(data)) return { ok: false, error: "file is not a JSON array (expecting [{id,...}] rows)" };
+    const rows = (data as any[]).filter(r => r && typeof r === "object" && typeof r.id === "string" && /^\d{17,20}$/.test(r.id));
+    if (!rows.length) return { ok: false, error: "no rows with a 17-20 digit guild id found" };
+    return { ok: true, rows };
+}
+
 function readJson(path: string): any {
     try {
         return JSON.parse(readFileSync(path, "utf8"));

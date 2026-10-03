@@ -29,12 +29,14 @@ import { definePluginSettings, SettingsStore } from "@api/Settings";
 import { FolderIcon, SearchIcon } from "@components/Icons";
 import { Logger } from "@utils/Logger";
 import definePlugin, { OptionType } from "@utils/types";
-import { ChannelStore, RestAPI, SelectedChannelStore, Toasts, UserStore } from "@webpack/common";
+import { ChannelStore, GuildStore, RestAPI, SelectedChannelStore, showToast, UserStore } from "@webpack/common";
 
 import { applyActiveNowHiding, applyQuestHiding, applyUpsellHiding, type ArchiverSettings, collectDmNames, collectDmUserChannels, deleteUserMessages, dmRecipientId, exportAllDmMedia, getNonFriendDms, resolveDmChannelId, saveAllDmsAsText, saveDmAsText } from "./archiveCore";
 import { closeArchiveDashboard, openArchiveDashboard } from "./ArchiveDashboard";
 import { openLedgerBrowser } from "./Browser";
 import { closeFloating } from "./floating";
+import { closeGuildBrowser, openGuildBrowser } from "./GuildBrowser";
+import { guildLedgerCount, guildLedgerReady, guildLedgerRecord, recordLiveGuilds } from "./guildLedger";
 import { ledgerDmCount, ledgerNameCount, ledgerReady, recordDm, recordName } from "./ledger";
 
 const log = new Logger("DmLedger");
@@ -148,8 +150,8 @@ function engineSettings(): ArchiverSettings {
     };
 }
 
-function toast(message: string, type = Toasts.Type.MESSAGE) {
-    Toasts.show({ message, id: Toasts.genId(), type });
+function toast(message: string, type: "message" | "success" | "failure" = "message") {
+    showToast(message, type);
 }
 
 function resolveTargetUserId(args: any[]): string | undefined {
@@ -257,6 +259,32 @@ const ArchiveButton: ChatBarButtonFactory = ({ isMainChat, channel }) => {
 
 // ─── Plugin ──────────────────────────────────────────────────────────────────
 
+/** GUILD_CREATE: we're a member — record (name/count/owner) immediately. */
+function onGuildCreate(g: any): void {
+    if (!g?.id || typeof g.id !== "string") return;
+    guildLedgerRecord({
+        guildId: g.id, name: g.name,
+        memberCount: typeof g.member_count === "number" ? g.member_count : undefined,
+        owner: g.owner === true || g.ownerId === UserStore.getCurrentUser()?.id ? true : undefined,
+        source: "live",
+    });
+}
+
+/**
+ * GUILD_DELETE: the last moment GuildStore still knows the name. Fires for
+ * real leaves AND temporary unavailability (outage) — only leaves are
+ * history-worthy; an unavailable guild comes back.
+ */
+function onGuildDelete(e: { guild_id: string, unavailable?: boolean }): void {
+    if (e?.unavailable || !e?.guild_id) return;
+    const g = GuildStore.getGuild(e.guild_id);
+    guildLedgerRecord({
+        guildId: e.guild_id, name: g?.name, memberCount: (g as any)?.member_count ?? (g as any)?.memberCount,
+        source: "left",
+    });
+    log.info(`guild left — "${g?.name ?? e.guild_id}" stays in the ledger`);
+}
+
 export default definePlugin({
     name: "DmLedger",
     description: "Permanently remembers every DM partner (client-side IndexedDB), browses/restores them beyond Discord's ~100 list, and archives DM media/text to disk. Absorbs the retired GhostDms + DMArchiver.",
@@ -267,13 +295,16 @@ export default definePlugin({
     async start() {
         migrateArchiverSettings();
         await ledgerReady();
+        await guildLedgerReady();
         addMessagePreSendListener(onSend);
         addChatBarButton("dm-ledger-archive", ArchiveButton, FolderIcon);
         if (settings.store.captureOnStart) sweepLive().catch(() => undefined);
+        // zero-cost guild capture: read local store snapshot at startup
+        void 0;
         applyQuestHiding(settings.store.hideQuestStuff);
         applyUpsellHiding(settings.store.hideUpsellPrompts);
         applyActiveNowHiding(settings.store.hideActiveNow);
-        log.info(`ready — ledger holds ${ledgerDmCount()} partner(s), ${ledgerNameCount()} name(s)`);
+        log.info(`ready — ledger holds ${ledgerDmCount()} partner(s), ${ledgerNameCount()} name(s); guild ledger ${guildLedgerCount()} server(s)`);
         toast("DmLedger loaded: /dm-ledger (roster) · /dm-dashboard (export) · 🔍 and 📁 in DM chat bars");
         if (settings.store.showDeleteOption) {
             toast("DmLedger: delete commands ENABLED (use with caution)");
@@ -287,7 +318,13 @@ export default definePlugin({
         applyUpsellHiding(false);
         applyActiveNowHiding(false);
         closeFloating(); // roster browser (default key)
+        closeGuildBrowser(); // guild ledger window
         closeArchiveDashboard(); // archive dashboard ("DMArchiver" key) — windows die with the plugin
+    },
+
+    flux: {
+        GUILD_CREATE: onGuildCreate,
+        GUILD_DELETE: onGuildDelete,
     },
 
     chatBarButton: {
@@ -301,6 +338,13 @@ export default definePlugin({
             description: "Browse the permanent DM roster — everyone you've ever DM'd, beyond Discord's ~100 list",
             execute: () => {
                 openLedgerBrowser();
+            },
+        },
+        {
+            name: "guild-ledger",
+            description: "Browse the permanent server roster — every server you've ever been in, current + gone + backfilled",
+            execute: () => {
+                openGuildBrowser();
             },
         },
         {
@@ -341,12 +385,12 @@ export default definePlugin({
                     toast(userId ? `exporting media for ${userId}…` : "exporting media for ALL DMs…");
                     const { foundImages, savedImages } = await exportAllDmMedia(engineSettings(), userId, toast);
                     const msg = `Export: found ${foundImages}, saved ${savedImages}${settings.store.exportExternalMedia ? " (external included)" : ""}`;
-                    toast(msg, Toasts.Type.SUCCESS);
+                    toast(msg, "success");
                     return { content: msg };
                 } catch (error) {
                     const msg = `Export failed: ${String(error)}`;
                     log.error(msg, error);
-                    toast(msg, Toasts.Type.FAILURE);
+                    toast(msg, "failure");
                     return { content: msg };
                 }
             },
@@ -369,7 +413,7 @@ export default definePlugin({
                         toast("saving DM conversation…");
                         const bytes = await saveDmAsText(engineSettings(), channelId, userId);
                         const msg = `✅ Saved ${bytes} bytes`;
-                        toast(msg, Toasts.Type.SUCCESS);
+                        toast(msg, "success");
                         return { content: msg };
                     }
 
@@ -381,7 +425,7 @@ export default definePlugin({
                             toast("saving current conversation…");
                             const bytes = await saveDmAsText(engineSettings(), currentChannelId, String(recipientId));
                             const msg = `✅ Saved ${bytes} bytes`;
-                            toast(msg, Toasts.Type.SUCCESS);
+                            toast(msg, "success");
                             return { content: msg };
                         }
                     }
@@ -389,12 +433,12 @@ export default definePlugin({
                     toast("exporting ALL DM conversations…");
                     const { savedFiles, total } = await saveAllDmsAsText(engineSettings());
                     const msg = `✅ Saved ${savedFiles}/${total} conversations`;
-                    toast(msg, Toasts.Type.SUCCESS);
+                    toast(msg, "success");
                     return { content: msg };
                 } catch (error) {
                     const msg = `Save failed: ${String(error)}`;
                     log.error(msg, error);
-                    toast(msg, Toasts.Type.FAILURE);
+                    toast(msg, "failure");
                     return { content: msg };
                 }
             },
@@ -445,7 +489,7 @@ export default definePlugin({
                 toast("deleting your own messages…");
                 const { deleted, failed } = await deleteUserMessages(channelId, 20, 1500, toast);
                 const msg = `✅ Deleted ${deleted} own messages (${failed} failed)`;
-                toast(msg, Toasts.Type.SUCCESS);
+                toast(msg, "success");
                 return { content: msg };
             },
         },
@@ -463,7 +507,7 @@ export default definePlugin({
                 toast("scanning for your own messages…");
                 const { deleted, failed } = await deleteUserMessages(channelId, 20, 1500, toast);
                 const msg = `✅ Deleted ${deleted} messages (${failed} failed)`;
-                toast(msg, Toasts.Type.SUCCESS);
+                toast(msg, "success");
                 return { content: msg };
             },
         },

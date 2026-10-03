@@ -22,9 +22,9 @@ import {
     Checkbox,
     RestAPI,
     SelectedChannelStore,
+    showToast,
     Text,
     TextInput,
-    Toasts,
     useEffect,
     UserStore,
     useState,
@@ -306,8 +306,7 @@ function LedgerBrowser({ close }: { close: () => void; }) {
         setSel(next);
     };
 
-    const toast = (message: string, failure = false) =>
-        Toasts.show({ message, id: Toasts.genId(), type: failure ? Toasts.Type.FAILURE : Toasts.Type.SUCCESS });
+    const toast = (message: string, failure = false) => showToast(message, failure ? "failure" : "success");
 
     const doOpen = async (row: LedgerDm) => {
         try {
