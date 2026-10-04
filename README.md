@@ -27,14 +27,20 @@ A [Vencord](https://github.com/Vendicated/Vencord) userplugin that remembers **e
 
 ## Install
 
-Vencord compiles plugins at build time — clone this repo into your Vencord source tree:
+Vencord compiles plugins at build time. Clone this repo anywhere, then copy **both** plugin folders (flat — the plugin name is its folder name) into your Vencord source tree:
 
 ```bash
-git clone https://github.com/redbelter/vencord-dm-archiver Vencord/src/userplugins/dmLedger
-cd Vencord
+git clone https://github.com/redbelter/vencord-dm-archiver
+cd vencord-dm-archiver
+cp -r dmLedger msgPurge /path/to/Vencord/src/userplugins/
+cd /path/to/Vencord
 pnpm install
 pnpm build       # or: pnpm watch  (rebuild on save; Ctrl+R in Discord)
 ```
+
+> ⚠️ Don't clone *into* `src/userplugins/dmLedger` — that nests the code one level too deep
+> (`dmLedger/dmLedger/`) and breaks `pnpm build` for the whole tree. The plugin's `index.tsx`
+> must sit directly at `src/userplugins/<PluginFolder>/index.tsx`.
 
 If you have a patched Discord desktop install (`pnpm build && node scripts/runInstaller.mjs`), just `Ctrl+R` after the build.
 
