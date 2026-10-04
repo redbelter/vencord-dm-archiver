@@ -48,6 +48,9 @@ const Native = (typeof VencordNative !== "undefined" ? VencordNative : undefined
 
 const BACKFILL_PATH_KEY = "GuildLedgerLastImportPath";
 
+// how many saved names the inline expand shows before telling you to Copy
+export const ROSTER_VIEW_CAP = 50;
+
 export function closeGuildBrowser(): boolean {
     return closeFloating("GuildLedger");
 }
@@ -114,6 +117,8 @@ function GuildPanel({ close }: { close: () => void; }) {
     const [search, setSearch] = useState("");
     const [importPath, setImportPath] = useState<string>(() => safeStore.getItem(BACKFILL_PATH_KEY) ?? "");
     const [importMsg, setImportMsg] = useState<string | null>(null);
+    // which row's "who was there" list is expanded (one at a time)
+    const [rosterOpen, setRosterOpen] = useState<string | null>(null);
 
     const toast = (message: string, failure = false) => showToast(message, failure ? "failure" : "success");
 
@@ -241,7 +246,8 @@ function GuildPanel({ close }: { close: () => void; }) {
                     </Text>
                 )}
                 {visible.map(g => (
-                    <div key={g.guildId} style={{ display: "flex", alignItems: "center", gap: "6px", padding: "4px 6px", marginTop: "4px", background: "var(--bg-overlay-2, rgba(128,128,128,.08))", borderRadius: "6px" }}>
+                    <div key={g.guildId}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "4px 6px", marginTop: "4px", background: "var(--bg-overlay-2, rgba(128,128,128,.08))", borderRadius: "6px" }}>
                         {guildIconUrl(g)
                             ? <img src={guildIconUrl(g)!} alt="" title={g.description ? g.description.slice(0, 140) : g.name ?? g.guildId}
                                 style={{ width: 24, height: 24, borderRadius: "50%", flexShrink: 0, objectFit: "cover" }} />
@@ -260,6 +266,13 @@ function GuildPanel({ close }: { close: () => void; }) {
                                         : "Couldn't request (server not in your list?)", !sent);
                                 }}>
                                 Catch roster
+                            </Button>
+                        )}
+                        {!!g.memberSnapshot?.length && (
+                            <Button size="xs" variant={rosterOpen === g.guildId ? "primary" : "secondary"}
+                                title={`Show the ${g.memberSnapshot.length} member name(s) saved for this server (click again to hide)`}
+                                onClick={() => setRosterOpen(rosterOpen === g.guildId ? null : g.guildId)}>
+                                {rosterOpen === g.guildId ? "Hide roster" : "Roster"}
                             </Button>
                         )}
                         {!!g.memberSnapshot?.length && (
@@ -282,6 +295,21 @@ function GuildPanel({ close }: { close: () => void; }) {
                             onClick={() => { guildLedgerForget(g.guildId); refresh(); }}>
                             Forget
                         </Button>
+                        </div>
+                        {rosterOpen === g.guildId && !!g.memberSnapshot?.length && (
+                            <div style={{ marginTop: "2px", padding: "6px 8px", background: "var(--bg-overlay-1, rgba(128,128,128,.05))", borderRadius: "6px", maxHeight: "180px", overflowY: "auto" }}>
+                                <Text variant="text-xs/normal">
+                                    {g.memberSnapshot.length > ROSTER_VIEW_CAP
+                                        ? `Showing first ${ROSTER_VIEW_CAP} of ${g.memberSnapshot.length} saved — Roster Copy exports all`
+                                        : `Who was there (${g.memberSnapshot.length} saved)`}
+                                </Text>
+                                {g.memberSnapshot.slice(0, ROSTER_VIEW_CAP).map(([id, name]) => (
+                                    <div key={id} title={`id ${id}`} style={{ fontSize: "12px", lineHeight: "18px", color: "var(--header-primary)" }}>
+                                        {name} <span style={{ color: "var(--text-muted)" }}>· {id}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 ))}
             </div>
