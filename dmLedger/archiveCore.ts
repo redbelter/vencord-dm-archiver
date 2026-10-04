@@ -137,7 +137,13 @@ export function applyUpsellHiding(enabled: boolean): void {
 // container — plain chat content can never be blanked by a message someone
 // typed. Hidden elements are restored when the feature is turned off/stopped.
 
-export const PROMO_TEXT_RE = /(\b\d+ (?:discord )?orbs\b|orbs claimed|link your[\s\S]{0,40}account\b|earn \d+ orbs|claim \d+ orbs|bonus orbs)/i;
+// Campaign copy families scraped from the LIVE client's i18n string tables
+// (webpack scan). Deliberately requires campaign context words (orbs/nitro/
+// game-pass/perks) — a bare "link your account" would also match Discord's
+// TV-device pairing flow, which the user starts themselves and must see.
+// Intentional flows kept reachable: "Nitro Trial applied" (payment receipt
+// toast), "Unlock with Nitro" (inline lock labels), TV pairing copy.
+export const PROMO_TEXT_RE = /(\b\d+ (?:discord )?orbs\b|orbs claimed|orbs (?:drop|coming your way|flowing)|monthly orbs|ready to redeem|earn \d+ orbs|claim \d+ orbs|bonus orbs|account connected to|claim your gift|claim your new perks|xbox game pass|check out all the new features)/i;
 const PROMO_CONTAINER_RE = /layer|modal|popout|notice|banner|toast|tooltip|overlay|fixed/i;
 
 let sniperObserver: MutationObserver | null = null;
