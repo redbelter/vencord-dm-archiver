@@ -64,7 +64,7 @@ Then: **Settings → Vencord → Plugins → DmLedger** (search "dm").
 - `showGuildLedgerButton` — the `ledger` button above the server rail (opens GuildLedger)
 - `captureOnStart` — sweep the live DM list at startup, `hideQuestStuff`
 - `hideActiveNow` — hide the entire "Active Now" column on the Friends page
-- `hideUpsellPrompts` — hides "Gift Nitro" buttons, the "try Nitro" ad card, and "connect your accounts" nudges (Nitro/Connections settings pages stay reachable). Also snipes campaign popups by copy — e.g. "Get 200 Discord Orbs when you link your Riot Games Account" — via a MutationObserver that only ever hides modal/popout containers, never chat content (campaign class names are build-hashed, the marketing copy isn't)
+- `hideUpsellPrompts` — hides "Gift Nitro" buttons, the "try Nitro" ad card, and "connect your accounts" nudges (Nitro/Connections settings pages stay reachable). Also snipes campaign popups by copy — orbs promos (the Riot-link "Get 200 Discord Orbs" popup, monthly Orbs drops, redemption nags), Xbox Game Pass upsell modals, gift-claim modals, feature-unlock nags — via a MutationObserver that only ever hides modal/popout containers, never chat content (campaign class names are build-hashed, the marketing copy isn't; the pattern list was scraped from Discord's own i18n tables). User-started flows stay visible: TV-device pairing, payment receipts, inline "Unlock with Nitro" labels
 - Values you had under the old DMArchiver plugin move over automatically on first start.
 
 ## MsgPurge (companion plugin, `msgPurge/`)
