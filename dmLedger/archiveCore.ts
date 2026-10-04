@@ -114,12 +114,103 @@ const HIDE_UPSELLS_CSS = `
 
 export function applyUpsellHiding(enabled: boolean): void {
     document.getElementById(HIDE_UPSELLS_STYLE_ID)?.remove();
-    if (!enabled) return;
+    if (!enabled) {
+        stopPromoSniper();
+        return;
+    }
 
     const style = document.createElement("style");
     style.id = HIDE_UPSELLS_STYLE_ID;
     style.textContent = HIDE_UPSELLS_CSS;
     document.head.appendChild(style);
+    startPromoSniper();
+}
+
+// ─── Promo sniper (orbs / account-link campaign popups) ─────────────────────
+// Discord pushes time-boxed campaigns like "Get 200 Discord Orbs when you link
+// your Riot Games Account" / "Account Connected and 200 Orbs claimed!" through
+// modal & popout layers. Their class names are build-hashed and rotate with
+// every release, but the marketing COPY is stable — so we match on text.
+//
+// Safety: a node is only ever hidden when (a) its text matches the campaign
+// patterns AND (b) it (or a close ancestor) is inside a modal/popout/notice
+// container — plain chat content can never be blanked by a message someone
+// typed. Hidden elements are restored when the feature is turned off/stopped.
+
+export const PROMO_TEXT_RE = /(\b\d+ (?:discord )?orbs\b|orbs claimed|link your[\s\S]{0,40}account\b|earn \d+ orbs|claim \d+ orbs|bonus orbs)/i;
+const PROMO_CONTAINER_RE = /layer|modal|popout|notice|banner|toast|tooltip|overlay|fixed/i;
+
+let sniperObserver: MutationObserver | null = null;
+let sniperHidden = new Set<HTMLElement>();
+
+function promoText(t: string | null): t is string {
+    return typeof t === "string" && t.length < 1200 && PROMO_TEXT_RE.test(t);
+}
+
+/**
+ * From a freshly-mounted node, walk up the promo-text region and return the
+ * element to hide: the innermost ancestor that (a) still carries only the
+ * promo copy and (b) looks like a popout/modal container. Fall back to the
+ * outermost promo ancestor only when it is a direct <body> child (portal
+ * layer containers) — that keeps chat content untouchable.
+ */
+export function pickPromoRoot(node: HTMLElement): HTMLElement | null {
+    let containerHit: HTMLElement | null = null;
+    let cur: HTMLElement | null = node;
+    for (let hop = 0; cur && cur !== document.body && hop < 8; hop++, cur = cur.parentElement) {
+        if (!promoText(cur.textContent)) break; // ancestors grow into the whole app
+        const cls = typeof cur.className === "string" ? cur.className : "";
+        let positioned = /^(fixed|absolute)$/.test((cur.style as any)?.position ?? "");
+        if (!positioned && typeof getComputedStyle === "function") {
+            try {
+                const pos = getComputedStyle(cur).position;
+                positioned = pos === "fixed" || pos === "absolute";
+            } catch { /* detached node */ }
+        }
+        if ((PROMO_CONTAINER_RE.test(cls) || positioned) && !containerHit) containerHit = cur;
+    }
+    // ONLY ever hide a modal/popout-looking container — plain chat content that
+    // merely mentions the campaign can never be blanked.
+    return containerHit;
+}
+
+function sniperScan(node: HTMLElement | null): void {
+    if (!node || node.nodeType !== 1) return;
+    try {
+        if (!PROMO_TEXT_RE.test(node.textContent ?? "")) return; // cheap pre-check
+        const root = pickPromoRoot(node);
+        if (root && !sniperHidden.has(root)) {
+            // never claim a node Discord already hides itself — otherwise
+            // turning the feature OFF would "restore" a popup it closed
+            try { if (getComputedStyle(root).display === "none") return; } catch { /* detached */ }
+            root.style.setProperty("display", "none", "important");
+            sniperHidden.add(root);
+        }
+    } catch { /* detached/gremlin node — ignore */ }
+}
+
+export function startPromoSniper(): void {
+    stopPromoSniper();
+    if (typeof MutationObserver === "undefined" || typeof document === "undefined" || !document.body) return;
+    // a campaign popup may already be on screen when the setting is enabled
+    for (const el of Array.from(document.body.children)) sniperScan(el as HTMLElement);
+    sniperObserver = new MutationObserver(mutations => {
+        for (const m of mutations) {
+            for (const n of Array.from(m.addedNodes)) {
+                if (n.nodeType === 1) sniperScan(n as HTMLElement);
+            }
+        }
+    });
+    sniperObserver.observe(document.body, { childList: true, subtree: true });
+}
+
+export function stopPromoSniper(): void {
+    sniperObserver?.disconnect();
+    sniperObserver = null;
+    for (const el of sniperHidden) {
+        try { el.style.removeProperty("display"); } catch { /* gone already */ }
+    }
+    sniperHidden = new Set();
 }
 
 // ─── Message URL candidates ──────────────────────────────────────────────────
