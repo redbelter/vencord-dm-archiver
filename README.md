@@ -28,12 +28,12 @@ A [Vencord](https://github.com/Vendicated/Vencord) userplugin that remembers **e
 
 ## Install
 
-Vencord compiles plugins at build time. Clone this repo anywhere, then copy **both** plugin folders (flat — the plugin name is its folder name) into your Vencord source tree:
+Vencord compiles plugins at build time. Clone this repo anywhere, then copy **all three** plugin folders (flat — the plugin name is its folder name) into your Vencord source tree:
 
 ```bash
 git clone https://github.com/redbelter/vencord-dm-archiver
 cd vencord-dm-archiver
-cp -r dmLedger msgPurge /path/to/Vencord/src/userplugins/
+cp -r dmLedger msgPurge gamePresence /path/to/Vencord/src/userplugins/
 cd /path/to/Vencord
 pnpm install
 pnpm build       # or: pnpm watch  (rebuild on save; Ctrl+R in Discord)
@@ -74,6 +74,28 @@ Then: **Settings → Vencord → Plugins → DmLedger** (search "dm").
 - `hideUpsellPrompts` — hides "Gift Nitro" buttons, the "try Nitro" ad card, and "connect your accounts" nudges (Nitro/Connections settings pages stay reachable). Also snipes campaign popups by copy — orbs promos (the Riot-link "Get 200 Discord Orbs" popup, monthly Orbs drops, redemption nags), Xbox Game Pass upsell modals, gift-claim modals, feature-unlock nags — via a MutationObserver that only ever hides modal/popout containers, never chat content (campaign class names are build-hashed, the marketing copy isn't; the pattern list was scraped from Discord's own i18n tables). User-started flows stay visible: TV-device pairing, payment receipts, inline "Unlock with Nitro" labels
 - Values you had under the old DMArchiver plugin move over automatically on first start.
 
+## GamePresence (companion plugin, `gamePresence/`)
+
+Spoof **your own** activity — the `Playing <anything>` line everyone sees, with
+more than one string in it:
+
+- `/playing Some Game` sets it instantly; `verb:watching|listening|streaming|competing`
+  changes the prefix verb (`Watching One Piece`, `Listening to Phonk`)
+- `details:` / `state:` — the two rich-presence lines under the title (mission + map,
+  the way real games show it)
+- `hours:3` — fake **elapsed** head-start, so the session timer reads 3+ hours
+- `party:2 / 5` — a player-count chip; `sub:clear` / `sub:off` wipe or park it
+- profile **buttons** and full rich artwork come from the same payload slots —
+  buttons work like upstream CustomRPC's; a custom banner image would need a
+  registered Discord application (the plugin sends standard activity fields)
+
+It **re-applies on every launch**, so your status is effectively permanent —
+survives restarts and re-logins (flip `active` off in settings for a normal
+presence). One thing it silently does: Discord hides ALL activities when the
+*Display current activity as a status message* user setting is off, so the
+plugin force-enables that one privacy toggle while it is broadcasting (the
+exact trick upstream CustomRPC plays, via the same `UserSettingsAPI`).
+
 ## MsgPurge (companion plugin, `msgPurge/`)
 
 Standalone rate-limited self-delete tool with a DM picker; it shares the same
@@ -89,6 +111,7 @@ cases without it.
 - Data-package import reads only `Relationship`/channel files; it never uploads or writes to Discord.
 - Deletion is rate-limited per Discord's own limits and always restricted to `author.id === you`.
 - Old GhostDms functionality (hidden-DM finding, package import, restore) lives in the browser now; the original code stays in `git log -- ghostDms/`.
+- GamePresence only ever edits **your own** client's local presence dispatch (`LOCAL_ACTIVITY_UPDATE`, the same socket mechanism Vencord's own musicRichPresence/CustomRPC use). It touches nobody else's data; it does not use tokens, REST, or unofficial endpoints.
 
 ## License
 
