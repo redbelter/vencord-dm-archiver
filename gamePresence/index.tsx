@@ -45,9 +45,14 @@ const settings = definePluginSettings({
         description: "Broadcast the fake activity below (turn off to vanish it instantly).",
         default: false,
     },
+    neverShow: {
+        type: OptionType.BOOLEAN,
+        description: "Hard privacy mode: NEVER show any activity. This plugin's spoof stays hidden AND Discord's activity display is pinned OFF, so auto-detected games (VALORANT etc.) stay invisible to everyone too. Re-applied every launch.",
+        default: false,
+    },
     name: {
         type: OptionType.STRING,
-        description: "The activity title — shown after Playing/Watching/etc.",
+        description: "The activity title — shown after Playing/Watching/etc. (no effect while neverShow is on).",
         placeholder: "Cyberpunk 2077",
         default: "",
     },
@@ -97,7 +102,25 @@ function currentActivity(): Record<string, any> | null {
     return buildActivity({ ...settings.store, enabled: settings.store.active } as any, Date.now(), APP_ID);
 }
 
+// remembers that WE flipped Discord's activity display false->true this
+// session, so stop() can undo it — leaving no trace when the user turns us off
+let gateForcedByUs = false;
+
 function apply(reason: string) {
+    if (settings.store.neverShow) {
+        // Hard privacy mode: refuse to broadcast AND pin Discord's activity
+        // display off — hides auto-detected games (VALORANT etc.) from
+        // everyone, including anything other plugins would show.
+        FluxDispatcher.dispatch({ type: "LOCAL_ACTIVITY_UPDATE", activity: null, socketId: SOCKET_ID });
+        try {
+            if (ShowCurrentGame.getSetting() !== false) ShowCurrentGame.updateSetting(false);
+        } catch (e) {
+            log.warn("could not pin showCurrentGame=false:", e);
+        }
+        gateForcedByUs = false; // we now own the OFF state, not the ON one
+        log.debug(`presence suppressed — neverShow (${reason})`);
+        return;
+    }
     const activity = currentActivity();
     if (activity) {
         // if Discord's activity display is off, nothing we dispatch will ever
@@ -105,11 +128,22 @@ function apply(reason: string) {
         try {
             if (!ShowCurrentGame.getSetting()) {
                 ShowCurrentGame.updateSetting(true);
+                gateForcedByUs = true;
                 log.info("force-enabled Activity Privacy 'showCurrentGame' (activities were hidden)");
             }
         } catch (e) {
             log.warn("could not ensure showCurrentGame:", e);
         }
+    } else if (gateForcedByUs) {
+        // our spoof just went away (active off / clear / empty). The gate was
+        // only ever on FOR the spoof — flip it back, otherwise turning this
+        // plugin "off" would START broadcasting auto-detected real games.
+        try {
+            if (ShowCurrentGame.getSetting() === true) ShowCurrentGame.updateSetting(false);
+        } catch (e) {
+            log.warn("could not restore showCurrentGame:", e);
+        }
+        gateForcedByUs = false;
     }
     FluxDispatcher.dispatch({ type: "LOCAL_ACTIVITY_UPDATE", activity, socketId: SOCKET_ID });
     log.debug(`presence ${activity ? "updated" : "cleared"} (${reason}) — ${activity?.name ?? "-"}`);
@@ -149,6 +183,18 @@ export default definePlugin({
     stop() {
         SettingsStore.removePrefixChangeListener("plugins.GamePresence", onSettingsChanged);
         FluxDispatcher.dispatch({ type: "LOCAL_ACTIVITY_UPDATE", activity: null, socketId: SOCKET_ID });
+        // Leave no trace: if we forced Discord's activity display on this
+        // session (or hard privacy is on), flip it back off — otherwise
+        // auto-detected games would START broadcasting the moment this
+        // plugin is disabled. Caveat: a flip the user made themselves in
+        // Discord settings during the session looks identical and gets
+        // restored too; the privacy-safe direction is the one we take.
+        if (gateForcedByUs || settings.store.neverShow) {
+            try {
+                if (ShowCurrentGame.getSetting() !== false) ShowCurrentGame.updateSetting(false);
+            } catch { /* settings API gone */ }
+        }
+        gateForcedByUs = false;
     },
 
     commands: [
@@ -220,8 +266,9 @@ export default definePlugin({
                 if (act.party) bits.push(`players: ${act.party.size[0]} / ${act.party.size[1]}`);
                 if (cfg.hours > 0) bits.push(`elapsed +${cfg.hours}h`);
                 if (act.buttons) bits.push(`buttons: ${act.buttons.length}`);
-                showToast(`Now showing: ${cfg.name}`);
-                return { content: `🎮 ${bits.join(" · ")}` };
+                const hiddenNote = settings.store.neverShow ? " [HIDDEN: neverShow is on in GamePresence settings]" : "";
+                if (!settings.store.neverShow) showToast(`Now showing: ${cfg.name}`);
+                return { content: `🎮 ${bits.join(" · ")}${hiddenNote}` };
             },
         },
     ],

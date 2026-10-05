@@ -98,6 +98,13 @@ presence). One thing it silently does: Discord hides ALL activities when the
 plugin force-enables that one privacy toggle while it is broadcasting (the
 exact trick upstream CustomRPC plays, via the same `UserSettingsAPI`).
 
+**The absolute kill-switch.** GamePresence has a `neverShow` setting — when it's on,
+the plugin pins Discord's Activity Privacy switch to OFF and broadcasts nothing, ever:
+not your spoof, not a real game Discord auto-detects. Turning the spoof off restores
+whatever privacy setting was in place before it turned on, so "off" means *no game is
+visible to anybody* — including games you actually play. If you want your real
+detected game to show, turn `neverShow` off and don't use the spoof.
+
 ## MsgPurge (companion plugin, `msgPurge/`)
 
 Standalone rate-limited self-delete tool with a DM picker; it shares the same
