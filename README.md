@@ -25,6 +25,7 @@ A [Vencord](https://github.com/Vendicated/Vencord) userplugin that remembers **e
   - **Backfill from your data package**: Discord's `Activity/` telemetry embeds `guild_id` (and often `guild_name` + `guild_size`) on hundreds of thousands of events — `dmLedger/guild_backfill.py` mines them into a `guild-ledger.json` (ids, names, first/last dates, strong-presence counts like voice/message events). Import it in the window. This is a *floor* on your history, not a census — telemetry only covers recorded time windows, and Discord resolves no names for servers you left.
 - 🗑️ **Self-deletion** (optional, double-gated by `showDeleteOption`) — batch-delete **only your own** messages, rate-limited with retry; peer messages are never touched
 - 🚫 Optional Quest-UI hiding
+- 🕶️ **Optional hiding** — Nitro gift/upsell ads, campaign popups (copy-based sniper), the Active Now column, and the **"Playing X" activity sublines in the server member list** (names, roles, and custom statuses stay visible — roster rows never show custom statuses anyway, so there is no collateral)
 
 ## Install
 
@@ -71,6 +72,7 @@ Then: **Settings → Vencord → Plugins → DmLedger** (search "dm").
 - `showGuildLedgerButton` — the `ledger` button above the server rail (opens GuildLedger)
 - `captureOnStart` — sweep the live DM list at startup, `hideQuestStuff`
 - `hideActiveNow` — hide the entire "Active Now" column on the Friends page
+- `hideMemberActivity` — hides the "Playing X / Watching X" activity sublines (and the icon-only "+N" grouped chips) in the **server member list**. Names, roles, tags, and custom statuses are untouched — roster rows never display custom statuses anyway (proven against the live client), so this can't take anything else down with it
 - `hideUpsellPrompts` — hides "Gift Nitro" buttons, the "try Nitro" ad card, and "connect your accounts" nudges (Nitro/Connections settings pages stay reachable). Also snipes campaign popups by copy — orbs promos (the Riot-link "Get 200 Discord Orbs" popup, monthly Orbs drops, redemption nags), Xbox Game Pass upsell modals, gift-claim modals, feature-unlock nags — via a MutationObserver that only ever hides modal/popout containers, never chat content (campaign class names are build-hashed, the marketing copy isn't; the pattern list was scraped from Discord's own i18n tables). User-started flows stay visible: TV-device pairing, payment receipts, inline "Unlock with Nitro" labels
 - Values you had under the old DMArchiver plugin move over automatically on first start.
 

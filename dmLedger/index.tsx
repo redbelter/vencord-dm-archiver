@@ -32,7 +32,7 @@ import { Logger } from "@utils/Logger";
 import definePlugin, { OptionType } from "@utils/types";
 import { ChannelStore, GuildStore, RestAPI, SelectedChannelStore, showToast, UserStore } from "@webpack/common";
 
-import { applyActiveNowHiding, applyQuestHiding, applyUpsellHiding, type ArchiverSettings, collectDmNames, collectDmUserChannels, deleteUserMessages, dmRecipientId, exportAllDmMedia, getNonFriendDms, resolveDmChannelId, saveAllDmsAsText, saveDmAsText } from "./archiveCore";
+import { applyActiveNowHiding, applyMemberActivityHiding, applyQuestHiding, applyUpsellHiding, type ArchiverSettings, collectDmNames, collectDmUserChannels, deleteUserMessages, dmRecipientId, exportAllDmMedia, getNonFriendDms, resolveDmChannelId, saveAllDmsAsText, saveDmAsText } from "./archiveCore";
 import { closeArchiveDashboard, openArchiveDashboard } from "./ArchiveDashboard";
 import { openLedgerBrowser } from "./Browser";
 import { closeFloating } from "./floating";
@@ -100,6 +100,12 @@ const settings = definePluginSettings({
         description: "Hide the entire \"Active Now\" column on the Friends page.",
         default: false,
         onChange: () => applyActiveNowHiding(settings.store.hideActiveNow),
+    },
+    hideMemberActivity: {
+        type: OptionType.BOOLEAN,
+        description: "Hide the \"Playing X\" activity sublines in the server member list. Names, roles, custom statuses, and everything else in the roster stay visible.",
+        default: false,
+        onChange: () => applyMemberActivityHiding(settings.store.hideMemberActivity),
     },
     hideUpsellPrompts: {
         type: OptionType.BOOLEAN,
@@ -337,6 +343,7 @@ export default definePlugin({
         applyQuestHiding(settings.store.hideQuestStuff);
         applyUpsellHiding(settings.store.hideUpsellPrompts);
         applyActiveNowHiding(settings.store.hideActiveNow);
+        applyMemberActivityHiding(settings.store.hideMemberActivity);
         log.info(`ready — ledger holds ${ledgerDmCount()} partner(s), ${ledgerNameCount()} name(s); guild ledger ${guildLedgerCount()} server(s)`);
         toast("DmLedger loaded: /dm-ledger (roster) · /dm-dashboard (export) · 🔍 and 📁 in DM chat bars");
         if (settings.store.showDeleteOption) {
@@ -351,6 +358,7 @@ export default definePlugin({
         applyQuestHiding(false);
         applyUpsellHiding(false);
         applyActiveNowHiding(false);
+        applyMemberActivityHiding(false);
         closeFloating(); // roster browser (default key)
         closeGuildBrowser(); // guild ledger window
         closeArchiveDashboard(); // archive dashboard ("DMArchiver" key) — windows die with the plugin

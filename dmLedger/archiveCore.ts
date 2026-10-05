@@ -92,6 +92,36 @@ export function applyActiveNowHiding(enabled: boolean): void {
     document.head.appendChild(style);
 }
 
+// ─── Member-list activity hiding ────────────────────────────────────────────
+// In the server member list, each member row can carry a subline under the
+// name: "Playing X / Watching X / …" (rich-presence text + icon, or an
+// icon-only chip with a "+N" counter when several members share one
+// activity). Live-CDP-proven 2026 structure: these render inside the row's
+// subText div as .textWithIconContainer (visible text+icon line),
+// .activityContainer (icon-only grouped chip), .activityCounter (+N).
+// Scoping under [class*="membersWrap"] keeps profile popouts, chat, and
+// everything outside the roster untouched; custom statuses do NOT render in
+// the roster (proven: rows with a custom status have an EMPTY subText), so
+// they can't be collateral.
+export const HIDE_MEMBER_ACTIVITY_STYLE_ID = "vc-dmledger-hide-member-activity";
+const HIDE_MEMBER_ACTIVITY_CSS = `
+    [class*="membersWrap"] [class*="subText"] [class*="textWithIconContainer"],
+    [class*="membersWrap"] [class*="subText"] [class*="activityContainer"],
+    [class*="membersWrap"] [class*="subText"] [class*="activityCounter"] {
+        display: none !important;
+    }
+`;
+
+export function applyMemberActivityHiding(enabled: boolean): void {
+    document.getElementById(HIDE_MEMBER_ACTIVITY_STYLE_ID)?.remove();
+    if (!enabled) return;
+
+    const style = document.createElement("style");
+    style.id = HIDE_MEMBER_ACTIVITY_STYLE_ID;
+    style.textContent = HIDE_MEMBER_ACTIVITY_CSS;
+    document.head.appendChild(style);
+}
+
 // ─── Upsell hiding (Nitro gifts + connect-account prompts) ──────────────────
 // Gift entry-points, the "try Nitro" ad card, and the "connect your accounts"
 // nudges — deliberately NOT the Nitro/Connections settings tabs, voice
