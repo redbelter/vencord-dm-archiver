@@ -24,19 +24,41 @@
 
 import { addChatBarButton, ChatBarButton, ChatBarButtonFactory, removeChatBarButton } from "@api/ChatButtons";
 import { ApplicationCommandOptionType, findOption } from "@api/Commands";
+import { NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { addMessagePreSendListener, removeMessagePreSendListener } from "@api/MessageEvents";
 import { addServerListElement, removeServerListElement, ServerListRenderPosition } from "@api/ServerList";
 import { definePluginSettings, SettingsStore } from "@api/Settings";
 import { FolderIcon, SearchIcon, WebsiteIcon } from "@components/Icons";
 import { Logger } from "@utils/Logger";
 import definePlugin, { OptionType } from "@utils/types";
-import { ChannelStore, GuildStore, RestAPI, SelectedChannelStore, showToast, UserStore } from "@webpack/common";
+import { ChannelStore, GuildStore, Menu, RestAPI, SelectedChannelStore, showToast, UserStore } from "@webpack/common";
 
-import { applyActiveNowHiding, applyMemberActivityHiding, applyQuestHiding, applyUpsellHiding, type ArchiverSettings, collectDmNames, collectDmUserChannels, deleteUserMessages, dmRecipientId, exportAllDmMedia, getNonFriendDms, resolveDmChannelId, saveAllDmsAsText, saveDmAsText } from "./archiveCore";
+import { applyActiveNowHiding, applyActivityCardsHiding, applyMemberActivityHiding, applyQuestHiding, applyUpsellHiding, type ArchiverSettings, collectDmNames, collectDmUserChannels, deleteUserMessages, dmRecipientId, exportAllDmMedia, getNonFriendDms, resolveDmChannelId, saveAllDmsAsText, saveDmAsText } from "./archiveCore";
 import { closeArchiveDashboard, openArchiveDashboard } from "./ArchiveDashboard";
 import { openLedgerBrowser } from "./Browser";
 import { closeFloating } from "./floating";
 import { closeGuildBrowser, openGuildBrowser } from "./GuildBrowser";
+import { closeMediaFinder, openMediaFinder } from "./MediaFinder";
+
+interface UserContextProps {
+    user?: { id: string; username?: string; global_name?: string; };
+}
+
+// Right-click anybody (friends or not) -> sweep every channel THIS account
+// can read for their media. Access model is Discord's own search endpoints:
+// guilds + DMs you can see, nothing else.
+const findMediaContextMenuPatch: NavContextMenuPatchCallback = (children, props: UserContextProps) => {
+    const user = props?.user;
+    if (!user?.id) return;
+    children.push(
+        <Menu.MenuItem
+            id="vc-dmledger-find-media"
+            key="vc-dmledger-find-media"
+            label="Find media from this person"
+            action={() => openMediaFinder(user.id, user.global_name || user.username || "this person")}
+        />,
+    );
+};
 import { guildLedgerCount, guildLedgerReady, guildLedgerRecord, harvestGuildMembers, onMemberChunks, recordLiveGuilds } from "./guildLedger";
 import { ledgerDmCount, ledgerNameCount, ledgerReady, recordDm, recordName } from "./ledger";
 
@@ -106,6 +128,12 @@ const settings = definePluginSettings({
         description: "Hide the \"Playing X\" activity sublines in the server member list. Names, roles, custom statuses, and everything else in the roster stay visible.",
         default: false,
         onChange: () => applyMemberActivityHiding(settings.store.hideMemberActivity),
+    },
+    hideActivityCards: {
+        type: OptionType.BOOLEAN,
+        description: "Hide the Activity cards inside profile popouts and full profiles (the big \"Playing X\" sections), plus the activity chip in DM headers. Note: the DM-header chip mixes game + custom status, so both go there.",
+        default: false,
+        onChange: () => applyActivityCardsHiding(settings.store.hideActivityCards),
     },
     hideUpsellPrompts: {
         type: OptionType.BOOLEAN,
@@ -344,6 +372,7 @@ export default definePlugin({
         applyUpsellHiding(settings.store.hideUpsellPrompts);
         applyActiveNowHiding(settings.store.hideActiveNow);
         applyMemberActivityHiding(settings.store.hideMemberActivity);
+        applyActivityCardsHiding(settings.store.hideActivityCards);
         log.info(`ready — ledger holds ${ledgerDmCount()} partner(s), ${ledgerNameCount()} name(s); guild ledger ${guildLedgerCount()} server(s)`);
         toast("DmLedger loaded: /dm-ledger (roster) · /dm-dashboard (export) · 🔍 and 📁 in DM chat bars");
         if (settings.store.showDeleteOption) {
@@ -359,8 +388,10 @@ export default definePlugin({
         applyUpsellHiding(false);
         applyActiveNowHiding(false);
         applyMemberActivityHiding(false);
+        applyActivityCardsHiding(false);
         closeFloating(); // roster browser (default key)
         closeGuildBrowser(); // guild ledger window
+        closeMediaFinder(); // media finder window
         closeArchiveDashboard(); // archive dashboard ("DMArchiver" key) — windows die with the plugin
     },
 
@@ -374,6 +405,10 @@ export default definePlugin({
     chatBarButton: {
         icon: SearchIcon,
         render: LedgerButton,
+    },
+
+    contextMenus: {
+        "user-context": findMediaContextMenuPatch,
     },
 
     commands: [

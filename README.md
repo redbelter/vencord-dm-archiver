@@ -27,6 +27,14 @@ A [Vencord](https://github.com/Vendicated/Vencord) userplugin that remembers **e
 - 🚫 Optional Quest-UI hiding
 - 🕶️ **Optional hiding** — Nitro gift/upsell ads, campaign popups (copy-based sniper), the Active Now column, and the **"Playing X" activity sublines in the server member list** (names, roles, and custom statuses stay visible — roster rows never show custom statuses anyway, so there is no collateral)
 
+**Find media from this person.** Right-click any user (friends or not) ->
+"Find media from this person". A floating window sweeps every server and DM
+your account can actually read — Discord's own search endpoints enforce the
+access model (places you can see, nothing else) — and lists every message
+with media that person authored, newest first, with Open (jumps straight to
+the message) and Copy links. Filters by channel/text, survives rate limits
+(retry built in), and shows honest accounting (unreadable vs rate-limited).
+
 ## Install
 
 Vencord compiles plugins at build time. Clone this repo anywhere, then copy **all three** plugin folders (flat — the plugin name is its folder name) into your Vencord source tree:
@@ -73,6 +81,7 @@ Then: **Settings → Vencord → Plugins → DmLedger** (search "dm").
 - `captureOnStart` — sweep the live DM list at startup, `hideQuestStuff`
 - `hideActiveNow` — hide the entire "Active Now" column on the Friends page
 - `hideMemberActivity` — hides the "Playing X / Watching X" activity sublines (and the icon-only "+N" grouped chips) in the **server member list**. Names, roles, tags, and custom statuses are untouched — roster rows never display custom statuses anyway (proven against the live client), so this can't take anything else down with it
+- `hideActivityCards` — hides the big "Playing X" Activity cards inside profile popouts and full profiles, plus the activity chip in DM headers (the header chip mixes game + custom status, so both are hidden there)
 - `hideUpsellPrompts` — hides "Gift Nitro" buttons, the "try Nitro" ad card, and "connect your accounts" nudges (Nitro/Connections settings pages stay reachable). Also snipes campaign popups by copy — orbs promos (the Riot-link "Get 200 Discord Orbs" popup, monthly Orbs drops, redemption nags), Xbox Game Pass upsell modals, gift-claim modals, feature-unlock nags — via a MutationObserver that only ever hides modal/popout containers, never chat content (campaign class names are build-hashed, the marketing copy isn't; the pattern list was scraped from Discord's own i18n tables). User-started flows stay visible: TV-device pairing, payment receipts, inline "Unlock with Nitro" labels
 - Values you had under the old DMArchiver plugin move over automatically on first start.
 

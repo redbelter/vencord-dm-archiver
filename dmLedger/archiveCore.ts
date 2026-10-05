@@ -122,6 +122,37 @@ export function applyMemberActivityHiding(enabled: boolean): void {
     document.head.appendChild(style);
 }
 
+// ─── Activity CARDS (profile popouts, fullscreen profiles, DM headers) ──────
+// Distinct from the roster sublines above: these are the big "Activity"
+// sections inside profile cards, confirmed live via CDP DOM inventory —
+// .activitySection__*/.gameSection__* is the shared card component (popout,
+// fullscreen profile, Active Now), .dmHeaderActivityStatus is the chip in a
+// DM's header. Scoping to the popout/profile containers keeps chat messages
+// and the roster untouched. Caveat: the DM-header chip carries custom status
+// too (it mixes game + status), so hiding it hides both there.
+export const HIDE_ACTIVITY_CARDS_STYLE_ID = "vc-dmledger-hide-activity-cards";
+const HIDE_ACTIVITY_CARDS_CSS = `
+    [class*="userPopout"] [class*="activitySection"],
+    [class*="userPopout"] [class*="gameSection"],
+    [class*="userProfileOuter"] [class*="activitySection"],
+    [class*="userProfileOuter"] [class*="gameSection"],
+    [class*="user-profile-popout"] [class*="activitySection"],
+    [class*="user-profile-popout"] [class*="gameSection"],
+    [class*="dmHeaderActivityStatus"] {
+        display: none !important;
+    }
+`;
+
+export function applyActivityCardsHiding(enabled: boolean): void {
+    document.getElementById(HIDE_ACTIVITY_CARDS_STYLE_ID)?.remove();
+    if (!enabled) return;
+
+    const style = document.createElement("style");
+    style.id = HIDE_ACTIVITY_CARDS_STYLE_ID;
+    style.textContent = HIDE_ACTIVITY_CARDS_CSS;
+    document.head.appendChild(style);
+}
+
 // ─── Upsell hiding (Nitro gifts + connect-account prompts) ──────────────────
 // Gift entry-points, the "try Nitro" ad card, and the "connect your accounts"
 // nudges — deliberately NOT the Nitro/Connections settings tabs, voice
