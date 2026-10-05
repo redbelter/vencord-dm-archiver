@@ -14,6 +14,7 @@
 // (returns the ORIGINAL channel — same sanctioned call GhostDms uses).
 
 import { commands as commandRegistry } from "@api/Commands";
+import { SettingsStore } from "@api/Settings";
 import { Button } from "@components/Button";
 import { copyToClipboard } from "@utils/clipboard";
 import {
@@ -30,9 +31,10 @@ import {
     useState,
 } from "@webpack/common";
 
+import { saveFile } from "./archiveCore";
 import { type RosterPerson, searchGuildRosters, searchPeopleCache } from "./findPeople";
 import { closeFloating, openFloating, safeStore } from "./floating";
-import { type LedgerDm, ledgerDmCount, ledgerDms, ledgerForget, ledgerNameCount, ledgerRefresh, recordDm, recordName } from "./ledger";
+import { ledgerBackupPayload, type LedgerDm, ledgerDmCount, ledgerDms, ledgerForget, ledgerImportBackup, ledgerNameCount, ledgerRefresh, recordDm, recordName } from "./ledger";
 import type { PackageScan } from "./native";
 
 // native (main-process) bridge: reads a Discord data-package folder — the ONE
@@ -40,7 +42,12 @@ import type { PackageScan } from "./native";
 // (Settings → Privacy & Safety → Request all my Data, then unzip).
 // Hidden on web builds (no native.ts there).
 const Native = (typeof VencordNative !== "undefined" ? VencordNative : undefined)?.pluginHelpers?.DmLedger as
-    | { scanPackage(path: string): Promise<PackageScan>; chooseFolder(): Promise<{ path: string | null; } | string | null>; }
+    | {
+        scanPackage(path: string): Promise<PackageScan>;
+        chooseFolder(): Promise<{ path: string | null; } | string | null>;
+        pickFile?(): Promise<{ path: string | null; } | string | null>;
+        readBackupFile?(path: string): Promise<{ ok: boolean; error?: string; data?: unknown }>;
+    }
     | undefined;
 
 const PKG_PATH_KEY = "DmLedgerLastPkgPath";
@@ -561,6 +568,43 @@ function LedgerBrowser({ close }: { close: () => void; }) {
         toast(`Ledger exported — ${payload.partners.length} partner(s) copied to clipboard as JSON`);
     };
 
+    // The ledger's value is surviving wipes, which means surviving THIS client's
+    // IndexedDB dying. Save writes the full roster (incl. the name cache) to a
+    // real file: the configured Download folder, else a save dialog.
+    const doSaveBackup = async () => {
+        const payload = ledgerBackupPayload();
+        const name = `dm-ledger-backup-${new Date().toISOString().slice(0, 10)}.json`;
+        try {
+            const folder = (SettingsStore.plain?.plugins?.DmLedger?.downloadFolder ?? "").trim();
+            await saveFile(new TextEncoder().encode(JSON.stringify(payload, null, 2)), name, folder);
+            toast(`Backup saved — ${payload.partners.length} partner(s) + ${payload.names.length} name(s) → ${folder || "save dialog"}`);
+        } catch (e) {
+            toast(`Backup failed: ${String(e).slice(0, 100)}`, true);
+        }
+    };
+
+    const doRestoreBackup = async () => {
+        if (!Native?.pickFile || !Native?.readBackupFile) {
+            toast("Restore needs the desktop app (file picker)", true);
+            return;
+        }
+        const picked: any = await Native.pickFile();
+        const path = typeof picked === "string" ? picked : picked?.path;
+        if (!path) return;
+        const res = await Native.readBackupFile(path);
+        if (!res?.ok) {
+            toast(`Backup unreadable: ${res?.error ?? "unknown"}`, true);
+            return;
+        }
+        const out = ledgerImportBackup(res.data);
+        if (!out.ok) {
+            toast(`Not a DmLedger backup: ${out.error}`, true);
+            return;
+        }
+        refresh();
+        toast(`Backup restored — ${out.imported} new, ${out.merged} merged, ${out.skipped} skipped`);
+    };
+
     const btn = "margin-left:6px;padding:3px 10px;font-size:12px";
     const filterBtn = (key: LedgerFilter, label: string) => (
         <Button
@@ -645,6 +689,18 @@ function LedgerBrowser({ close }: { close: () => void; }) {
                 >
                     Export JSON
                 </Button>
+                <Button size="xs" variant="secondary" disabled={Boolean(busy)} title="Write the FULL ledger (partners + name cache) to a JSON file in your Download folder (or pick one) — survives reinstalls, wiped caches, new machines"
+                    onClick={() => void doSaveBackup()}
+                >
+                    Save file
+                </Button>
+                {Native && (
+                    <Button size="xs" variant="secondary" disabled={Boolean(busy)} title="Merge a backup file you saved earlier back into this ledger (dates keep their history; nothing is erased)"
+                        onClick={() => void doRestoreBackup()}
+                    >
+                        Restore backup
+                    </Button>
+                )}
             </div>
 
             {busy && (

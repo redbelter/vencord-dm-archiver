@@ -14,6 +14,7 @@
 // There is deliberately no "rejoin" button — rejoining needs an invite; the
 // ledger's job is to hand you the NAME to search for (disboard, google).
 
+import { SettingsStore } from "@api/Settings";
 import { Button } from "@components/Button";
 import { copyToClipboard } from "@utils/clipboard";
 import {
@@ -25,10 +26,13 @@ import {
     useState,
 } from "@webpack/common";
 
+import { saveFile } from "./archiveCore";
 import { closeFloating, openFloating, safeStore } from "./floating";
 import {
+    guildBackupPayload,
     guildLedgerForget,
     guildLedgerImportBackfill,
+    guildLedgerImportBackup,
     guildLedgerList,
     guildLedgerRefresh,
     guildLedgerWipe,
@@ -43,6 +47,8 @@ const Native = (typeof VencordNative !== "undefined" ? VencordNative : undefined
     | {
         readGuildLedgerFile?: (path: string) => Promise<{ ok: boolean; error?: string; rows?: unknown[] }>;
         chooseFolder?: () => Promise<{ path: string | null; } | string | null>;
+        pickFile?(): Promise<{ path: string | null; } | string | null>;
+        readBackupFile?(path: string): Promise<{ ok: boolean; error?: string; data?: unknown }>;
     }
     | undefined;
 
@@ -167,6 +173,42 @@ function GuildPanel({ close }: { close: () => void; }) {
         toast(`Guild roster exported — ${rows.length} server(s) copied as JSON`);
     };
 
+    // full-fidelity backup: icons + caught rosters included, unlike the
+    // clipboard export (which is the filtered view). Plain JSON file, your disk.
+    const doSaveBackup = async () => {
+        const payload = guildBackupPayload();
+        const name = `guild-ledger-backup-${new Date().toISOString().slice(0, 10)}.json`;
+        try {
+            const folder = (SettingsStore.plain?.plugins?.DmLedger?.downloadFolder ?? "").trim();
+            await saveFile(new TextEncoder().encode(JSON.stringify(payload, null, 2)), name, folder);
+            toast(`Backup saved — ${payload.servers.length} server(s) → ${folder || "save dialog"}`);
+        } catch (e) {
+            toast(`Backup failed: ${String(e).slice(0, 100)}`, true);
+        }
+    };
+
+    const doRestoreBackup = async () => {
+        if (!Native?.pickFile || !Native?.readBackupFile) {
+            toast("Restore needs the desktop app (file picker)", true);
+            return;
+        }
+        const picked: any = await Native.pickFile();
+        const path = typeof picked === "string" ? picked : picked?.path;
+        if (!path) return;
+        const res = await Native.readBackupFile(path);
+        if (!res?.ok) {
+            toast(`Backup unreadable: ${res?.error ?? "unknown"}`, true);
+            return;
+        }
+        const out = guildLedgerImportBackup(res.data);
+        if (!out.ok) {
+            toast(`Not a GuildLedger backup: ${out.error}`, true);
+            return;
+        }
+        refresh();
+        toast(`Backup restored — ${out.added} new, ${out.merged} merged, ${out.skipped} skipped`);
+    };
+
     const filterBtn = (key: GuildFilter, label: string, tip: string) => (
         <Button key={key} size="xs" variant={filter === key ? "primary" : "secondary"}
             title={tip} onClick={() => setFilter(key)}>
@@ -230,6 +272,18 @@ function GuildPanel({ close }: { close: () => void; }) {
                     onClick={exportAll}>
                     Export JSON
                 </Button>
+                <Button size="xs" variant="secondary"
+                    title="Write the FULL ledger (incl. icons and every caught roster) to a JSON file in your Download folder (or pick one) — survives reinstalls and wiped caches"
+                    onClick={() => void doSaveBackup()}>
+                    Save file
+                </Button>
+                {Native && (
+                    <Button size="xs" variant="secondary"
+                        title="Merge a GuildLedger backup file back in (history only grows: dates merge, rosters union, nothing erased)"
+                        onClick={() => void doRestoreBackup()}>
+                        Restore backup
+                    </Button>
+                )}
                 <Button size="xs" variant="dangerSecondary"
                     title="Deletes the ENTIRE guild ledger from this client. Servers you're still in get re-recorded on next launch; gone-servers are gone from the ledger until you re-import."
                     onClick={() => { void guildLedgerWipe().then(() => { refresh(); toast("Guild ledger cleared"); }); }}>

@@ -217,6 +217,38 @@ export async function fileExists(_: any, folder: string, fileName: string) {
     }
 }
 
+/** pick a single JSON file (backup restore). Desktop only. */
+export async function pickFile(_event: any): Promise<{ path: string | null; error?: string }> {
+    try {
+        const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null;
+        const opts = {
+            title: "Pick a ledger backup file",
+            properties: ["openFile" as const],
+            filters: [{ name: "JSON backup", extensions: ["json"] }],
+        };
+        const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
+        if (res.canceled || !res.filePaths?.[0]) return { path: null };
+        return { path: res.filePaths[0] };
+    } catch (e) {
+        return { path: null, error: String(e) };
+    }
+}
+
+/**
+ * Read ANY ledger backup JSON as raw data (no schema judgement — each core's
+ * import function validates its own shape). Read-only.
+ */
+export async function readBackupFile(_event: any, pathRaw: unknown): Promise<{ ok: boolean; error?: string; data?: unknown }> {
+    if (typeof pathRaw !== "string" || !pathRaw.trim()) return { ok: false, error: "no path given" };
+    const path = pathRaw.trim().replace(/^"|"$/g, "");
+    if (!existsSync(path)) return { ok: false, error: `not found: ${path}` };
+    try {
+        return { ok: true, data: JSON.parse(readFileSync(path, "utf8")) };
+    } catch (e) {
+        return { ok: false, error: `not valid JSON: ${String(e).slice(0, 80)}` };
+    }
+}
+
 export async function chooseFolder(_event: any): Promise<{ path: string | null; error?: string }> {
     try {
         const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null;

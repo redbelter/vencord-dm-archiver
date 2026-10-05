@@ -119,17 +119,19 @@ export async function guildLedgerRefresh(): Promise<void> {
 }
 
 /** upsert one sighting; merge semantics keep history honest */
-export function guildLedgerRecord(g: Partial<LedgerGuild> & { guildId: string, source?: string }): void {
+export function guildLedgerRecord(g: Partial<LedgerGuild> & { guildId: string, source?: string, firstSeenMs?: number, snapshotAtMs?: number }): void {
     const now = Date.now();
     const prev = guildCache.get(g.guildId);
     const backfillStart = Date.parse(g.firstSeenDate ?? "") || Infinity;
+    // backup restore passes firstSeenMs directly (epoch numbers, not telemetry date-strings)
+    const seenStart = g.firstSeenMs ?? Math.min(g.firstSeen ?? Infinity, backfillStart);
     const snapshot = g.memberSnapshot !== undefined ? mergeSnapshots(prev?.memberSnapshot, g.memberSnapshot) : prev?.memberSnapshot;
     const rec: LedgerGuild = {
         guildId: g.guildId,
         name: g.name ?? prev?.name,
         memberCount: g.memberCount ?? prev?.memberCount,
         owner: (g.owner || prev?.owner) || undefined,
-        firstSeen: Math.min(prev?.firstSeen ?? now, g.firstSeen ?? now, backfillStart),
+        firstSeen: Math.min(prev?.firstSeen ?? Infinity, seenStart === Infinity ? now : seenStart),
         lastSeen: Math.max(prev?.lastSeen ?? 0, g.lastSeen ?? now),
         source: g.source ?? prev?.source ?? "live",
         icon: g.icon ?? prev?.icon,
@@ -139,7 +141,7 @@ export function guildLedgerRecord(g: Partial<LedgerGuild> & { guildId: string, s
         strongEvents: Math.max(prev?.strongEvents ?? 0, g.strongEvents ?? 0) || undefined,
         memberSnapshot: snapshot,
         // only stamp when THIS call actually contributed roster material
-        snapshotAt: g.memberSnapshot?.length ? now : prev?.snapshotAt,
+        snapshotAt: g.memberSnapshot?.length ? (g.snapshotAtMs ?? now) : (prev?.snapshotAt ?? g.snapshotAtMs),
     };
     guildCache.set(g.guildId, rec);
     enqueue(() => DataStore.set(KEY_PREFIX + g.guildId, rec));
@@ -316,4 +318,66 @@ export function guildLedgerImportBackfill(rows: Array<{
         if (prev) merged++; else added++;
     }
     return { added, merged, skipped };
+}
+
+// ─── backup / restore ────────────────────────────────────────────────────────
+// Same contract as the DM ledger: export is a plain file YOU own; restoring
+// merges without ever shrinking history (firstSeen min, lastSeen max, roster
+// snapshots union-merged).
+
+/** full-fidelity snapshot including icon hashes and caught rosters */
+export function guildBackupPayload(): { kind: "GuildLedger.v1"; exportedAt: string; servers: LedgerGuild[] } {
+    return {
+        kind: "GuildLedger.v1",
+        exportedAt: new Date().toISOString(),
+        servers: guildLedgerList(),
+    };
+}
+
+const SNOWFLAKE = /^\d{17,20}$/;
+
+/**
+ * Restore a GuildLedger backup file (exported by this plugin). Unlike the
+ * telemetry backfill reader, this one trusts richer rows: firstSeen/lastSeen
+ * as epoch ms, icon hashes, descriptions, and member snapshots. Junk is
+ * skipped row-by-row, never trusted wholesale.
+ */
+export function guildLedgerImportBackup(data: unknown): { ok: boolean; error?: string; added: number; merged: number; skipped: number } {
+    const payload = Array.isArray(data) ? { servers: data } : data as any;
+    if (!payload || typeof payload !== "object" || !Array.isArray(payload.servers))
+        return { ok: false, error: "not a GuildLedger backup (expecting {servers:[...]})", added: 0, merged: 0, skipped: 0 };
+    let added = 0, merged = 0, skipped = 0;
+    for (const s of payload.servers) {
+        const gid = String(s?.guildId ?? "");
+        if (!SNOWFLAKE.test(gid)) { skipped++; continue; }
+        const prev = guildCache.get(gid);
+        const incoming = typeof s.source === "string" ? s.source : "backup";
+        // a real live/left capture outranks backup evidence — never downgrade
+        const strong = (src?: string) => src === "live" || src === "left";
+        // when the live client already saw this server, THIS session's stores
+        // are fresher than any file: identity fields come from memory, the
+        // backup may only fill gaps (icon/roster/dates below still merge).
+        const stale = strong(prev?.source) && !strong(incoming);
+        guildLedgerRecord({
+            guildId: gid,
+            name: stale ? undefined : (typeof s.name === "string" ? s.name : undefined),
+            memberCount: typeof s.memberCount === "number" ? s.memberCount : undefined,
+            owner: s.owner === true ? true : undefined,
+            source: stale ? prev!.source : incoming,
+            firstSeenMs: typeof s.firstSeen === "number" && s.firstSeen > 0 ? s.firstSeen : undefined,
+            lastSeen: typeof s.lastSeen === "number" && s.lastSeen > 0 ? s.lastSeen : undefined,
+            icon: stale ? undefined : (typeof s.icon === "string" ? s.icon : undefined),
+            description: stale ? undefined : (typeof s.description === "string" ? s.description : undefined),
+            firstSeenDate: typeof s.firstSeenDate === "string" ? s.firstSeenDate : undefined,
+            lastSeenDate: typeof s.lastSeenDate === "string" ? s.lastSeenDate : undefined,
+            strongEvents: typeof s.strongEvents === "number" ? s.strongEvents : undefined,
+            // honor the roster's ORIGINAL catch timestamp — restoring isn't "caught today"
+            snapshotAtMs: typeof s.snapshotAt === "number" && s.snapshotAt > 0 ? s.snapshotAt : undefined,
+            memberSnapshot: Array.isArray(s.memberSnapshot)
+                ? s.memberSnapshot.filter((m: any) => Array.isArray(m) && SNOWFLAKE.test(String(m[0])))
+                : undefined,
+        });
+        if (prev) merged++; else added++;
+    }
+    return { ok: true, added, merged, skipped };
 }

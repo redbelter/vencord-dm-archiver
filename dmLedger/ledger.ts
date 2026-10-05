@@ -124,6 +124,7 @@ export async function ledgerRefresh(): Promise<void> {
  */
 export function recordDm(entry: {
     userId: string; channelId?: string; username?: string; isFriend?: boolean; source: string;
+    firstSeen?: number; lastSeen?: number; // backup restore only — live callers omit
 }): void {
     const userId = String(entry.userId ?? "");
     if (!/^[0-9]{15,25}$/.test(userId)) return; // real snowflakes only — no junk keys
@@ -134,8 +135,12 @@ export function recordDm(entry: {
         channelId: entry.channelId || existing?.channelId || "",
         username: entry.username ?? existing?.username,
         isFriend: entry.isFriend ?? existing?.isFriend,
-        firstSeen: existing?.firstSeen ?? now,
-        lastSeen: now,
+        firstSeen: existing?.firstSeen != null && entry.firstSeen != null
+            ? Math.min(existing.firstSeen, entry.firstSeen)
+            : existing?.firstSeen ?? entry.firstSeen ?? now,
+        lastSeen: entry.lastSeen != null
+            ? Math.max(existing?.lastSeen ?? 0, entry.lastSeen) || now
+            : now, // live sightings always stamp "now" (unchanged behavior)
         source: existing && !existing.source.split("+").includes(entry.source)
             ? existing.source + "+" + entry.source
             : existing?.source ?? entry.source,
@@ -150,7 +155,7 @@ export function recordDm(entry: {
 }
 
 /** Remember a display name for a user id (display name preferred, handle kept too). */
-export function recordName(entry: { userId: string; username?: string; globalName?: string; }): void {
+export function recordName(entry: { userId: string; username?: string; globalName?: string; lastSeen?: number; }): void {
     const userId = String(entry.userId ?? "");
     if (!/^[0-9]{15,25}$/.test(userId)) return;
     if (!entry.username && !entry.globalName) return;
@@ -159,7 +164,9 @@ export function recordName(entry: { userId: string; username?: string; globalNam
         userId,
         username: entry.username ?? existing?.username,
         globalName: entry.globalName ?? existing?.globalName,
-        lastSeen: Date.now(),
+        lastSeen: entry.lastSeen != null
+            ? Math.max(entry.lastSeen, existing?.lastSeen ?? 0) || Date.now()
+            : Date.now(), // live sighting: "we know this name as of right now"
     };
     const unchanged = existing
         && existing.username === merged.username
@@ -222,4 +229,62 @@ export function ledgerWipe(): void {
 /** flush pending writes (tests / tidy shutdown) */
 export function ledgerFlush(): Promise<void> {
     return writeChain;
+}
+
+// ─── backup / restore ────────────────────────────────────────────────────────
+// The ledger's whole point is surviving Discord wipes — a backup file is what
+// actually makes it survive a blown IndexedDB. Export = plain JSON you own;
+// restore keeps every recorded date (firstSeen min-merges, never resets).
+
+/** full-fidelity snapshot: every partner row + the separate name cache */
+export function ledgerBackupPayload(): {
+    kind: "DmLedger.v1"; exportedAt: string;
+    partners: Array<{ userId: string; channelId: string; username?: string; isFriend?: boolean; firstSeen: number; lastSeen: number; source: string }>;
+    names: LedgerName[];
+} {
+    return {
+        kind: "DmLedger.v1",
+        exportedAt: new Date().toISOString(),
+        partners: ledgerDms().map(r => ({ ...r })),
+        names: [...nameCache.values()].map(n => ({ ...n })),
+    };
+}
+
+/**
+ * Restore a backup file (or the clipboard payload, or a bare partners array).
+ * Trusted input (you exported it); ids are still snowflake-validated and
+ * firstSeen can only ever move EARLIER. Returns counts; ok=false + error for
+ * junk files so the UI can say why.
+ */
+export function ledgerImportBackup(data: unknown): { ok: boolean; error?: string; imported: number; merged: number; skipped: number } {
+    const payload = Array.isArray(data) ? { partners: data } : data as any;
+    if (!payload || typeof payload !== "object" || !Array.isArray(payload.partners))
+        return { ok: false, error: "not a DmLedger backup (expecting {partners:[...]})", imported: 0, merged: 0, skipped: 0 };
+    let imported = 0, merged = 0, skipped = 0;
+    for (const p of payload.partners) {
+        const userId = String(p?.userId ?? p?.id ?? "");
+        if (!/^[0-9]{15,25}$/.test(userId)) { skipped++; continue; }
+        const prev = !!dmCache.get(userId);
+        recordDm({
+            userId,
+            channelId: typeof p.channelId === "string" ? p.channelId : undefined,
+            username: typeof p.username === "string" ? p.username : undefined,
+            isFriend: typeof p.isFriend === "boolean" ? p.isFriend : undefined,
+            source: "backup",
+            firstSeen: typeof p.firstSeen === "number" && p.firstSeen > 0 ? p.firstSeen : undefined,
+            lastSeen: typeof p.lastSeen === "number" && p.lastSeen > 0 ? p.lastSeen : undefined,
+        });
+        if (prev) merged++; else imported++;
+    }
+    if (Array.isArray(payload.names)) {
+        for (const n of payload.names) {
+            recordName({
+                userId: String(n?.userId ?? ""),
+                username: typeof n?.username === "string" ? n.username : undefined,
+                globalName: typeof n?.globalName === "string" ? n.globalName : undefined,
+                lastSeen: typeof n?.lastSeen === "number" && n.lastSeen > 0 ? n.lastSeen : undefined,
+            });
+        }
+    }
+    return { ok: true, imported, merged, skipped };
 }
