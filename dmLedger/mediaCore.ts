@@ -112,7 +112,12 @@ export async function searchChannel(
         });
         // Vencord RestAPI wraps responses: { body, status, ok }
         const data = res?.body ?? res;
-        const msgs: any[] = Array.isArray(data?.messages?.[0]) ? data.messages[0] : (data?.messages ?? []);
+        // LIVE-PROVEN SHAPE: Discord groups search hits — /channels/<dm>/search
+        // with 16 hits returned 16 SEPARATE 1-message groups ([[m],[m],...]).
+        // Reading only messages[0] silently yields ONE media per channel.
+        // Flatten every group; plain (ungrouped) arrays pass through flat().
+        const raw = data?.messages ?? [];
+        const msgs: any[] = Array.isArray(raw[0]) ? raw.flat() : raw;
         if (!msgs.length) break;
         for (const msg of msgs) {
             if (!msg?.id) continue;
