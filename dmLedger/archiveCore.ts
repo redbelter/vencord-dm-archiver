@@ -204,7 +204,7 @@ export function applyUpsellHiding(enabled: boolean): void {
 // TV-device pairing flow, which the user starts themselves and must see.
 // Intentional flows kept reachable: "Nitro Trial applied" (payment receipt
 // toast), "Unlock with Nitro" (inline lock labels), TV pairing copy.
-export const PROMO_TEXT_RE = /(\b\d+ (?:discord )?orbs\b|orbs claimed|orbs (?:drop|coming your way|flowing)|monthly orbs|ready to redeem|earn \d+ orbs|claim \d+ orbs|bonus orbs|account connected to|claim your gift|claim your new perks|xbox game pass|check out all the new features)/i;
+export const PROMO_TEXT_RE = /(\b\d+ (?:discord )?orbs\b|orbs claimed|orbs (?:drop|coming your way|flowing)|monthly orbs|ready to redeem|earn \d+ orbs|claim \d+ orbs|bonus orbs|account connected to|claim your gift|claim your new perks|xbox game pass|check out all the new features|nitro reward|% off your next \d+ month)/i;
 const PROMO_CONTAINER_RE = /layer|modal|popout|notice|banner|toast|tooltip|overlay|fixed/i;
 
 let sniperObserver: MutationObserver | null = null;
@@ -227,14 +227,19 @@ export function pickPromoRoot(node: HTMLElement): HTMLElement | null {
     for (let hop = 0; cur && cur !== document.body && hop < 8; hop++, cur = cur.parentElement) {
         if (!promoText(cur.textContent)) break; // ancestors grow into the whole app
         const cls = typeof cur.className === "string" ? cur.className : "";
-        let positioned = /^(fixed|absolute)$/.test((cur.style as any)?.position ?? "");
-        if (!positioned && typeof getComputedStyle === "function") {
-            try {
-                const pos = getComputedStyle(cur).position;
-                positioned = pos === "fixed" || pos === "absolute";
-            } catch { /* detached node */ }
+        // notice TEXT/CONTENT subnodes count as containers via /notice/, but
+        // hiding them leaves the 54px gray frame as a stub (live-measured:
+        // hiding .noticeContent kept height 54) — skip them, prefer the frame.
+        if (!/(noticeText|noticeContent)/i.test(cls)) {
+            let positioned = /^(fixed|absolute)$/.test((cur.style as any)?.position ?? "");
+            if (!positioned && typeof getComputedStyle === "function") {
+                try {
+                    const pos = getComputedStyle(cur).position;
+                    positioned = pos === "fixed" || pos === "absolute";
+                } catch { /* detached node */ }
+            }
+            if ((PROMO_CONTAINER_RE.test(cls) || positioned) && !containerHit) containerHit = cur;
         }
-        if ((PROMO_CONTAINER_RE.test(cls) || positioned) && !containerHit) containerHit = cur;
     }
     // ONLY ever hide a modal/popout-looking container — plain chat content that
     // merely mentions the campaign can never be blanked.
@@ -261,6 +266,13 @@ export function startPromoSniper(): void {
     if (typeof MutationObserver === "undefined" || typeof document === "undefined" || !document.body) return;
     // a campaign popup may already be on screen when the setting is enabled
     for (const el of Array.from(document.body.children)) sniperScan(el as HTMLElement);
+    // banners (Nitro Reward notice etc.) mount DEEP under layers — the
+    // body.children walk can't reach them before React mounts; a targeted
+    // class sweep closes that gap (querySelectorAll absent in the DOM mock,
+    // hence the optional call; the MutationObserver still covers mount-time).
+    try {
+        for (const el of Array.from(document.body.querySelectorAll?.('[class*="notice"]') ?? [])) sniperScan(el as HTMLElement);
+    } catch { /* non-DOM env */ }
     sniperObserver = new MutationObserver(mutations => {
         for (const m of mutations) {
             for (const n of Array.from(m.addedNodes)) {
