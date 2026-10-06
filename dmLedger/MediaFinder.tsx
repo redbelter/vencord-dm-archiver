@@ -43,6 +43,14 @@ export function openMediaFinder(userId: string, userName: string): void {
 }
 
 async function startSweep(userId: string, userName: string): Promise<void> {
+    // empty id would make every request author-filter nothing and the
+    // client-side guard would drop every message — a silent, permanent zero.
+    if (!userId) {
+        showToast("Media finder: missing user id", "failure");
+        session = { userId: "", userName, report: null, progress: null, running: false };
+        bump();
+        return;
+    }
     session = { userId, userName, report: null, progress: { done: 0, total: 0, label: "planning…" }, running: true };
     bump();
     try {
@@ -50,7 +58,7 @@ async function startSweep(userId: string, userName: string): Promise<void> {
             RestAPI.get({ url: "/users/@me/guilds" }),
             RestAPI.get({ url: "/users/@me/channels" }),
         ]);
-        const targets = planSweep(guildsRes.body ?? [], channelsRes.body ?? []);
+        const targets = planSweep(guildsRes.body ?? [], channelsRes.body ?? [], userId);
         log.info(`sweeping ${targets.length} places for ${userName}`);
         const report = await sweepAll(RestAPI, targets, userId, {
             onProgress: (done, total, label) => {
@@ -162,7 +170,7 @@ function MediaFinder({ close }: { close: () => void; }) {
                 )}
             </div>
             <div style={{ padding: "6px 10px", borderTop: "1px solid var(--background-tertiary)", opacity: 0.6, fontSize: 11 }}>
-                {s?.userName ? `author: ${s.userName} · ` : ""}covers every server &amp; DM your account can read
+                {s?.userName ? `author: ${s.userName} · ` : ""}every server + every DM with them your account can read
             </div>
             <button onClick={close} hidden aria-hidden />
         </div>

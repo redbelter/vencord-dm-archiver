@@ -28,12 +28,15 @@ A [Vencord](https://github.com/Vendicated/Vencord) userplugin that remembers **e
 - 🕶️ **Optional hiding** — Nitro gift/upsell ads, campaign popups (copy-based sniper), the Active Now column, and the **"Playing X" activity sublines in the server member list** (names, roles, and custom statuses stay visible — roster rows never show custom statuses anyway, so there is no collateral)
 
 **Find media from this person.** Right-click any user (friends or not) ->
-"Find media from this person". A floating window sweeps every server and DM
-your account can actually read — Discord's own search endpoints enforce the
-access model (places you can see, nothing else) — and lists every message
-with media that person authored, newest first, with Open (jumps straight to
-the message) and Copy links. Filters by channel/text, survives rate limits
-(retry built in), and shows honest accounting (unreadable vs rate-limited).
+"Find media from this person". A floating window sweeps every server plus
+every DM you share with them that your account can actually read — Discord's
+own search endpoints enforce the access model (places you can see, nothing
+else); unrelated DMs are skipped because they provably can't contain that
+person's messages. Lists every message with media that person authored,
+newest first, with Open (jumps straight to the message) and Copy links.
+Filters by channel/text, and survives Discord's aggressive search rate limits
+with adaptive pacing (auto-slow, courtesy wait + retry, partial results
+never discarded) plus honest accounting (unreadable vs rate-limited).
 
 ## Install
 

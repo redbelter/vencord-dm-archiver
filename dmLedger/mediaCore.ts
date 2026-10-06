@@ -39,20 +39,32 @@ export interface SweepOptions {
     maxChannels?: number; // safety cap
     delayMs?: number; // courtesy pause between requests
     onProgress?(done: number, total: number, label: string): void;
+    /** pacing changes (throttle-up after 429s, relax after clean runs) */
+    onPace?(ms: number): void;
 }
 
-export const SWEEP_DEFAULTS = { maxChannels: 400, delayMs: 60 };
+export const SWEEP_DEFAULTS = { maxChannels: 400, delayMs: 150 };
 
-/** Build the sweep list: all guilds first (usually higher media yield), then DMs. */
+/**
+ * Build the sweep list: all guilds first (usually higher media yield), then
+ * DMs. When `userId` is given, DM-type channels that provably do NOT include
+ * that person are skipped: a DM can only contain messages from its own
+ * participants, so 100+ unrelated DMs are pure wasted search budget (and
+ * 429 risk). Channels with unknown recipients stay in — we can't rule them out.
+ */
 export function planSweep(
     guilds: Array<{ id: string; name: string }>,
-    channels: Array<{ id: string; type: number; name?: string; recipients?: Array<{ id: string; username?: string; global_name?: string }> }>,
+    channels: Array<{ id: string; type: number; name?: string; recipient_ids?: string[]; recipients?: Array<{ id: string; username?: string; global_name?: string }> }>,
+    userId?: string,
 ): SweepTarget[] {
     const out: SweepTarget[] = [];
     for (const g of guilds ?? []) if (g?.id) out.push({ kind: "guild", id: g.id, label: g.name || g.id });
     for (const c of channels ?? []) {
         if (!c?.id || (c.type !== 1 && c.type !== 3)) continue; // DM + group DM only
-        const label = c.name || c.recipients?.map(r => r.global_name || r.username).filter(Boolean).join(", ") || "DM";
+        // house pattern: real API gives `recipients`, older payloads `recipient_ids`
+        const recips = c.recipients ?? c.recipient_ids ?? [];
+        if (userId && recips.length && !recips.some((r: any) => String(r?.id ?? r) === String(userId))) continue;
+        const label = c.name || (c.recipients ?? []).map(r => r.global_name || r.username).filter(Boolean).join(", ") || "DM";
         out.push({ kind: "dm", id: c.id, label });
     }
     return out;
@@ -92,24 +104,48 @@ export function extractMedia(msg: any): { urls: string[]; ts: string; preview: s
     };
 }
 
-/** One author-scoped `has=file` pass over a single channel, paginated. */
+/**
+ * One author-scoped `has=file` pass over a single channel, paginated.
+ * `keepPartialOn429`: a 429 mid-pagination normally REJECTS the whole
+ * channel — discarding pages already collected (live-proven: soul's DM had
+ * 25 good hits on page 0, page-1 429 threw them all away). The sweep passes
+ * true so pages survive; the one-shot retry re-searches from 0 and dedupe
+ * collapses the overlap.
+ */
 export async function searchChannel(
     rest: RestLike,
     target: SweepTarget,
     userId: string,
     clock: () => number = Date.now,
+    opts: { keepPartialOn429?: boolean; state?: { saw429: boolean; retryAfter?: number } } = {},
 ): Promise<MediaHit[]> {
     const base = target.kind === "guild"
         ? `/guilds/${target.id}/messages/search`
         : `/channels/${target.id}/messages/search`;
     const out: MediaHit[] = [];
+    const swallow = (e: any) => {
+        if (e?.status === 429) {
+            if (opts.state) {
+                opts.state.saw429 = true;
+                opts.state.retryAfter = Number(e?.retryAfter ?? e?.body?.retry_after) || 3;
+            }
+            return !!opts.keepPartialOn429;
+        }
+        return false;
+    };
     let offset = 0;
     // LIVE-PROVEN: /messages/search rejects limit>25 with 400. 40x25 = 1000 msg cap.
     for (let page = 0; page < 40; page++) {
-        const res = await rest.get({
-            url: base,
-            query: { author_id: userId, has: "file", limit: 25, offset },
-        });
+        let res: any;
+        try {
+            res = await rest.get({
+                url: base,
+                query: { author_id: userId, has: "file", limit: 25, offset },
+            });
+        } catch (e: any) {
+            if (swallow(e)) break; // keep what page(s) gave us
+            throw e;
+        }
         // Vencord RestAPI wraps responses: { body, status, ok }
         const data = res?.body ?? res;
         // LIVE-PROVEN SHAPE: Discord groups search hits — /channels/<dm>/search
@@ -152,36 +188,50 @@ export async function sweepAll(
     opts: SweepOptions = {},
 ): Promise<SweepReport> {
     const maxChannels = opts.maxChannels ?? SWEEP_DEFAULTS.maxChannels;
-    const delayMs = opts.delayMs ?? SWEEP_DEFAULTS.delayMs;
+    const baseDelay = opts.delayMs ?? SWEEP_DEFAULTS.delayMs;
     const report: SweepReport = { hits: [], channelsScanned: 0, channelsFailed: 0, rateLimited: 0, truncated: false };
     const list = targets.slice(0, maxChannels);
     if (targets.length > list.length) report.truncated = true;
+
+    // ADAPTIVE THROTTLE (measured: rapid sweeps get ~30% 429s). Start polite,
+    // triple the pause on every 429 (cap 3s), relax by half after 20 clean
+    // channels — Discord's search rate-limit window recovers within seconds.
+    let delay = baseDelay;
+    let cleanStreak = 0;
 
     let done = 0;
     for (const t of list) {
         done++;
         opts.onProgress?.(done, list.length, t.label);
+        const st = { saw429: false, retryAfter: 0 };
         try {
-            report.hits.push(...await searchChannel(rest, t, userId));
-        } catch (e: any) {
-            if (e?.status === 429) {
-                // Discord rate-limits message search hard (measured live: ~30%
-                // of rapid requests). Vencord's RestAPI rejects with the full
-                // response: { status, retryAfter (s), body.retry_after }.
-                // Wait the advertised pause, give the channel ONE more chance.
-                const wait = Math.min(Number(e?.retryAfter ?? e?.body?.retry_after) || 3, 6) * 1000;
-                await new Promise(r => setTimeout(r, wait));
-                try {
-                    report.hits.push(...await searchChannel(rest, t, userId));
-                } catch {
-                    report.rateLimited++; // still limited — Retry can recover it
-                }
-            } else {
-                report.channelsFailed++; // private archive/403/no-index — skip quietly
+            // 429 mid-page keeps already-collected hits (live-proven loss:
+            // soul's DM page-0 returned 25 hits, page-1 429 threw ALL of them)
+            report.hits.push(...await searchChannel(rest, t, userId, Date.now, { keepPartialOn429: true, state: st }));
+        } catch {
+            report.channelsFailed++; // 403/no-index/etc — skip quietly
+        }
+        if (st.saw429) {
+            delay = Math.min(delay * 3, 3000); // escalate pacing
+            cleanStreak = 0;
+            opts.onPace?.(delay);
+            await new Promise(r => setTimeout(r, Math.min(st.retryAfter || 3, 6) * 1000));
+            const st2 = { saw429: false, retryAfter: 0 };
+            try {
+                report.hits.push(...await searchChannel(rest, t, userId, Date.now, { keepPartialOn429: true, state: st2 }));
+            } catch { /* retry errored — partials from pass 1 still stand */ }
+            if (st2.saw429) report.rateLimited++; // retry STILL limited — Retry can catch more
+        } else {
+            // no 429 here (200 or 403 — both cost ~one request) → count toward relax
+            cleanStreak++;
+            if (cleanStreak >= 20 && delay > baseDelay) {
+                delay = Math.max(baseDelay, Math.floor(delay / 2));
+                cleanStreak = 0;
+                opts.onPace?.(delay);
             }
         }
         report.channelsScanned++; // attempted = scanned, whatever the outcome
-        if (delayMs > 0) await new Promise(r => setTimeout(r, delayMs));
+        if (delay > 0) await new Promise(r => setTimeout(r, delay));
     }
 
     // collapse duplicate message ids across pages (crossposts/forwards)
