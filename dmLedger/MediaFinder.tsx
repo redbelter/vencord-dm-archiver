@@ -68,7 +68,7 @@ async function startSweep(userId: string, userName: string): Promise<void> {
             },
         });
         if (session) { session.report = report; session.running = false; }
-        log.info(`done: ${report.hits.length} media message(s), ${report.channelsFailed} channel(s) skipped`);
+        log.info(`done: ${report.hits.length} media message(s), ${report.channelsFailed} unreadable skipped, ${report.rateLimited} rate-limited`);
     } catch (e) {
         log.error("sweep failed:", e);
         if (session) { session.running = false; session.progress = null; }
