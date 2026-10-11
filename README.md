@@ -41,7 +41,8 @@ never discarded) plus honest accounting (unreadable vs rate-limited).
 **Deleted-DM capture.** If someone deletes a DM message you saw (text,
 attachment links, stickers get a marker), DmLedger appends it to
 `<downloadFolder>\dmledger_deleted.jsonl` before it can vanish with a restart.
-`/deleted-dms` opens a searchable viewer; the file reloads on every launch, so
+`/deleted-dms` (or the 🗑 trash button in any chat bar) opens a searchable
+viewer; the file reloads on every launch, so
 what you saw while Discord was running is yours forever. Only other people's
 DM messages — your own deletions are never saved, guild traffic is never
 touched, and a delete that happened while Discord was closed simply produced
@@ -89,7 +90,8 @@ Then: **Settings → Vencord → Plugins → DmLedger** (search "dm").
 - `downloadFolder` — where exports go (e.g. `C:\Users\<you>\Pictures\DMExport`)
 - `maxImages` — per-message image cap, `includeLinkImages`, `exportExternalMedia`
 - `showDeleteOption` — unlocks deletion commands/buttons
-- `showChatBarEntry` — the browser button, `showArchiveButton` — the dashboard button
+- `showChatBarEntry` — the browser button, `showArchiveButton` — the dashboard button, `showDeletedDmsButton` — the 🗑 deleted-messages button
+- `captureDeletedDms` — the deleted-DM capture itself (off = nothing remembered or written)
 - `showGuildLedgerButton` — the `ledger` button above the server rail (opens GuildLedger)
 - `captureOnStart` — sweep the live DM list at startup, `hideQuestStuff`
 - `hideActiveNow` — hide the entire "Active Now" column on the Friends page

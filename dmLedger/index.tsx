@@ -28,7 +28,7 @@ import { NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { addMessagePreSendListener, removeMessagePreSendListener } from "@api/MessageEvents";
 import { addServerListElement, removeServerListElement, ServerListRenderPosition } from "@api/ServerList";
 import { definePluginSettings, SettingsStore } from "@api/Settings";
-import { FolderIcon, SearchIcon, WebsiteIcon } from "@components/Icons";
+import { DeleteIcon, FolderIcon, SearchIcon, WebsiteIcon } from "@components/Icons";
 import { Logger } from "@utils/Logger";
 import definePlugin, { OptionType } from "@utils/types";
 import { ChannelStore, GuildStore, Menu, RestAPI, SelectedChannelStore, showToast, UserStore } from "@webpack/common";
@@ -150,6 +150,11 @@ const settings = definePluginSettings({
     captureDeletedDms: {
         type: OptionType.BOOLEAN,
         description: "When someone deletes a DM message you've seen, save its text + attachment links to <downloadFolder>\\dmledger_deleted.jsonl so it survives restarts. Other people's DM messages only; your own deletions are never saved. View with /deleted-dms.",
+        default: true,
+    },
+    showDeletedDmsButton: {
+        type: OptionType.BOOLEAN,
+        description: "Show the deleted-messages (🗑) button in chat bars (opens the deleted-DM log — global, not per-channel).",
         default: true,
     },
 });
@@ -303,6 +308,22 @@ const ArchiveButton: ChatBarButtonFactory = ({ isMainChat, channel }) => {
     );
 };
 
+const DeletedButton: ChatBarButtonFactory = ({ isMainChat }) => {
+    // the deleted-DM log is global (other people's DM deletions), so unlike
+    // archive it shows in ANY main chat — where you are when you notice a
+    // "message deleted" placeholder
+    if (!isMainChat) return null;
+    if (!settings.store.showDeletedDmsButton) return null;
+    return (
+        <ChatBarButton
+            tooltip="DmLedger — deleted DM messages you saw (saved log)"
+            onClick={() => openDeletedDms()}
+        >
+            <DeleteIcon />
+        </ChatBarButton>
+    );
+};
+
 // ─── Plugin ──────────────────────────────────────────────────────────────────
 
 /** GUILD_CREATE / GUILD_UPDATE: we're a member — record metadata + cache. */
@@ -370,6 +391,7 @@ export default definePlugin({
         await guildLedgerReady();
         addMessagePreSendListener(onSend);
         addChatBarButton("dm-ledger-archive", ArchiveButton, FolderIcon);
+        addChatBarButton("dm-ledger-deleted", DeletedButton, DeleteIcon);
         if (settings.store.showGuildLedgerButton) addServerListElement(ServerListRenderPosition.Above, GuildLedgerRailButton);
         if (settings.store.captureOnStart) sweepLive().catch(() => undefined);
         // zero-cost guild capture: read local store snapshot at startup
@@ -391,6 +413,7 @@ export default definePlugin({
     stop() {
         removeMessagePreSendListener(onSend);
         removeChatBarButton("dm-ledger-archive");
+        removeChatBarButton("dm-ledger-deleted");
         removeServerListElement(ServerListRenderPosition.Above, GuildLedgerRailButton);
         applyQuestHiding(false);
         applyUpsellHiding(false);
