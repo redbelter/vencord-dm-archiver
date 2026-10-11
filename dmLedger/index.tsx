@@ -36,6 +36,7 @@ import { ChannelStore, GuildStore, Menu, RestAPI, SelectedChannelStore, showToas
 import { applyActiveNowHiding, applyActivityCardsHiding, applyMemberActivityHiding, applyQuestHiding, applyUpsellHiding, type ArchiverSettings, collectDmNames, collectDmUserChannels, deleteUserMessages, dmRecipientId, exportAllDmMedia, getNonFriendDms, resolveDmChannelId, saveAllDmsAsText, saveDmAsText } from "./archiveCore";
 import { closeArchiveDashboard, openArchiveDashboard } from "./ArchiveDashboard";
 import { openLedgerBrowser } from "./Browser";
+import { closeDeletedDms, configureDeletedDms, deletedDmCount, onDmMessageCreate, onDmMessageDelete, onDmMessageUpdate, openDeletedDms, reloadDeletedDms } from "./DeletedDms";
 import { closeFloating } from "./floating";
 import { closeGuildBrowser, openGuildBrowser } from "./GuildBrowser";
 import { closeMediaFinder, openMediaFinder } from "./MediaFinder";
@@ -145,6 +146,11 @@ const settings = definePluginSettings({
         type: OptionType.BOOLEAN,
         description: "Unlocks the message-deletion commands and per-row delete buttons. Use responsibly — only your own messages are ever deleted.",
         default: false,
+    },
+    captureDeletedDms: {
+        type: OptionType.BOOLEAN,
+        description: "When someone deletes a DM message you've seen, save its text + attachment links to <downloadFolder>\\dmledger_deleted.jsonl so it survives restarts. Other people's DM messages only; your own deletions are never saved. View with /deleted-dms.",
+        default: true,
     },
 });
 
@@ -373,7 +379,9 @@ export default definePlugin({
         applyActiveNowHiding(settings.store.hideActiveNow);
         applyMemberActivityHiding(settings.store.hideMemberActivity);
         applyActivityCardsHiding(settings.store.hideActivityCards);
-        log.info(`ready — ledger holds ${ledgerDmCount()} partner(s), ${ledgerNameCount()} name(s); guild ledger ${guildLedgerCount()} server(s)`);
+        configureDeletedDms({ folder: () => settings.store.downloadFolder ?? "", enabled: () => settings.store.captureDeletedDms });
+        await reloadDeletedDms();
+        log.info(`ready — ledger holds ${ledgerDmCount()} partner(s), ${ledgerNameCount()} name(s); guild ledger ${guildLedgerCount()} server(s); deleted-DM log ${deletedDmCount()} message(s)`);
         toast("DmLedger loaded: /dm-ledger (roster) · /dm-dashboard (export) · 🔍 and 📁 in DM chat bars");
         if (settings.store.showDeleteOption) {
             toast("DmLedger: delete commands ENABLED (use with caution)");
@@ -392,6 +400,7 @@ export default definePlugin({
         closeFloating(); // roster browser (default key)
         closeGuildBrowser(); // guild ledger window
         closeMediaFinder(); // media finder window
+        closeDeletedDms(); // deleted-DM viewer
         closeArchiveDashboard(); // archive dashboard ("DMArchiver" key) — windows die with the plugin
     },
 
@@ -400,6 +409,10 @@ export default definePlugin({
         GUILD_UPDATE: onGuildCreate, // icon/name/description changes refresh the record
         GUILD_DELETE: onGuildDelete,
         GUILD_MEMBERS_CHUNK_BATCH: onMemberChunks, // passive "who was there" ride-along
+        MESSAGE_CREATE: onDmMessageCreate, // deleted-DM capture (DM channels only)
+        MESSAGE_UPDATE: onDmMessageUpdate, // edits refresh the remembered text
+        MESSAGE_DELETE: onDmMessageDelete,
+        MESSAGE_DELETE_BULK: onDmMessageDelete,
     },
 
     chatBarButton: {
@@ -424,6 +437,13 @@ export default definePlugin({
             description: "Browse the permanent server roster — every server you've ever been in, current + gone + backfilled",
             execute: () => {
                 openGuildBrowser();
+            },
+        },
+        {
+            name: "deleted-dms",
+            description: "View DM messages other people deleted after you saw them (saved to disk, survives restarts).",
+            execute: () => {
+                openDeletedDms();
             },
         },
         {

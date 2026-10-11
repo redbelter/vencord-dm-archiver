@@ -11,7 +11,7 @@
 
 import { BrowserWindow, dialog } from "electron";
 import { existsSync, readdirSync, readFileSync } from "fs";
-import { access, mkdir, writeFile as fsWriteFile } from "fs/promises";
+import { access, appendFile as fsAppendFile, mkdir, readFile as fsReadFile, writeFile as fsWriteFile } from "fs/promises";
 import { join } from "path";
 
 export interface PackageDm {
@@ -214,6 +214,26 @@ export async function fileExists(_: any, folder: string, fileName: string) {
         return true;
     } catch {
         return false;
+    }
+}
+
+/** append one already-formatted line (deleted-DM capture). Creates the file. */
+export async function appendFile(_: any, folder: string, fileName: string, text: string) {
+    try {
+        await mkdir(folder, { recursive: true });
+        await fsAppendFile(safeJoin(folder, fileName), text);
+        return { success: true as const };
+    } catch (error) {
+        return { success: false as const, error: String(error) };
+    }
+}
+
+/** read a text file from the export folder (restore of the deleted-DM log) */
+export async function readFileInFolder(_: any, folder: string, fileName: string) {
+    try {
+        return { ok: true as const, text: await fsReadFile(safeJoin(folder, fileName), "utf-8") };
+    } catch (error) {
+        return { ok: false as const, error: String(error) };
     }
 }
 

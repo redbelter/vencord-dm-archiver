@@ -38,6 +38,15 @@ Filters by channel/text, and survives Discord's aggressive search rate limits
 with adaptive pacing (auto-slow, courtesy wait + retry, partial results
 never discarded) plus honest accounting (unreadable vs rate-limited).
 
+**Deleted-DM capture.** If someone deletes a DM message you saw (text,
+attachment links, stickers get a marker), DmLedger appends it to
+`<downloadFolder>\dmledger_deleted.jsonl` before it can vanish with a restart.
+`/deleted-dms` opens a searchable viewer; the file reloads on every launch, so
+what you saw while Discord was running is yours forever. Only other people's
+DM messages — your own deletions are never saved, guild traffic is never
+touched, and a delete that happened while Discord was closed simply produced
+no event (nothing can recover it, honestly).
+
 ## Install
 
 Vencord compiles plugins at build time. Clone this repo anywhere, then copy **all three** plugin folders (flat — the plugin name is its folder name) into your Vencord source tree:
@@ -65,6 +74,7 @@ Then: **Settings → Vencord → Plugins → DmLedger** (search "dm").
 |---|---|
 | `/dm-ledger` | Open the roster browser |
 | `/guild-ledger` | Open the guild ledger (every server you've ever been in) |
+| `/deleted-dms` | View DM messages other people deleted after you saw them |
 | `/dm-dashboard` | Open the archive dashboard |
 | `/dm-export <user> [days]` | Export DM text+media to the download folder |
 | `/dm-export-all [days]` | Export every DM in the map |
