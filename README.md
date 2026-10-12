@@ -77,20 +77,20 @@ Then: **Settings → Vencord → Plugins → DmLedger** (search "dm").
 | `/guild-ledger` | Open the guild ledger (every server you've ever been in) |
 | `/deleted-dms` | View DM messages other people deleted after you saw them |
 | `/dm-dashboard` | Open the archive dashboard |
-| `/dm-export <user> [days]` | Export DM text+media to the download folder |
-| `/dm-export-all [days]` | Export every DM in the map |
-| `/dm-save <user>` | Save text transcript only |
-| `/dm-save-all` | Save every DM transcript |
-| `/dm-audit` | List every DM partner, flag non-friends |
-| `/dm-delete <user> <days>` | Delete your own messages (needs `showDeleteOption`) |
-| `/dm-delete-recent <days>` | Same, across all DMs (needs `showDeleteOption`) |
+| `/list-dm-users` | List every DM partner available for export (username + id) |
+| `/export-dm-media [userId]` | Download DM media to disk (blank = every DM) |
+| `/save-dm-text [userId]` | Save text transcripts (blank = current conversation, else all) |
+| `/list-non-friends` | List DM partners you are not friends with |
+| `/toggle-delete-commands` | Flip the `showDeleteOption` gate from chat |
+| `/delete-dm-messages [userId]` | Delete YOUR OWN messages in a DM (needs `showDeleteOption`) |
+| `/delete-all-my-messages` | Same, everything in the current DM, batched + rate-limited |
 
 ## Settings (Settings → Plugins → DmLedger)
 
 - `downloadFolder` — where exports go (e.g. `C:\Users\<you>\Pictures\DMExport`)
 - `maxImages` — per-message image cap, `includeLinkImages`, `exportExternalMedia`
 - `showDeleteOption` — unlocks deletion commands/buttons
-- `showChatBarEntry` — the browser button, `showArchiveButton` — the dashboard button, `showDeletedDmsButton` — the 🗑 deleted-messages button
+- `showChatBarEntry` — the browser button, `showArchiveButton` — the dashboard button, `showDeletedDmsButton` — the 🕒 deleted-messages button (all four chat-bar buttons have distinct icons: 🔍 roster, 📁 archive, 🕒 deleted log, 🗑 msgPurge)
 - `captureDeletedDms` — the deleted-DM capture itself (off = nothing remembered or written)
 - `showGuildLedgerButton` — the `ledger` button above the server rail (opens GuildLedger)
 - `captureOnStart` — sweep the live DM list at startup, `hideQuestStuff`
