@@ -41,7 +41,7 @@ never discarded) plus honest accounting (unreadable vs rate-limited).
 **Deleted-DM capture.** If someone deletes a DM message you saw (text,
 attachment links, stickers get a marker), DmLedger appends it to
 `<downloadFolder>\dmledger_deleted.jsonl` before it can vanish with a restart.
-`/deleted-dms` (or the 🗑 trash button in any chat bar) opens a searchable
+`/deleted-dms` (or the 🕒 clock button in any chat bar) opens a searchable
 viewer; the file reloads on every launch, so
 what you saw while Discord was running is yours forever. Only other people's
 DM messages — your own deletions are never saved, guild traffic is never

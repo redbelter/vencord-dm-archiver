@@ -28,7 +28,7 @@ import { NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { addMessagePreSendListener, removeMessagePreSendListener } from "@api/MessageEvents";
 import { addServerListElement, removeServerListElement, ServerListRenderPosition } from "@api/ServerList";
 import { definePluginSettings, SettingsStore } from "@api/Settings";
-import { DeleteIcon, FolderIcon, SearchIcon, WebsiteIcon } from "@components/Icons";
+import { ClockIcon, FolderIcon, SearchIcon, WebsiteIcon } from "@components/Icons";
 import { Logger } from "@utils/Logger";
 import definePlugin, { OptionType } from "@utils/types";
 import { ChannelStore, GuildStore, Menu, RestAPI, SelectedChannelStore, showToast, UserStore } from "@webpack/common";
@@ -154,7 +154,7 @@ const settings = definePluginSettings({
     },
     showDeletedDmsButton: {
         type: OptionType.BOOLEAN,
-        description: "Show the deleted-messages (🗑) button in chat bars (opens the deleted-DM log — global, not per-channel).",
+        description: "Show the deleted-messages (🕒) button in chat bars (opens the deleted-DM log — global, not per-channel).",
         default: true,
     },
 });
@@ -319,7 +319,7 @@ const DeletedButton: ChatBarButtonFactory = ({ isMainChat }) => {
             tooltip="DmLedger — deleted DM messages you saw (saved log)"
             onClick={() => openDeletedDms()}
         >
-            <DeleteIcon />
+            <ClockIcon />
         </ChatBarButton>
     );
 };
@@ -391,7 +391,7 @@ export default definePlugin({
         await guildLedgerReady();
         addMessagePreSendListener(onSend);
         addChatBarButton("dm-ledger-archive", ArchiveButton, FolderIcon);
-        addChatBarButton("dm-ledger-deleted", DeletedButton, DeleteIcon);
+        addChatBarButton("dm-ledger-deleted", DeletedButton, ClockIcon);
         if (settings.store.showGuildLedgerButton) addServerListElement(ServerListRenderPosition.Above, GuildLedgerRailButton);
         if (settings.store.captureOnStart) sweepLive().catch(() => undefined);
         // zero-cost guild capture: read local store snapshot at startup
