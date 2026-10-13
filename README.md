@@ -4,6 +4,20 @@ A [Vencord](https://github.com/Vendicated/Vencord) userplugin that remembers **e
 
 **2026-10: DMArchiver and GhostDms were retired into this plugin.** One install (`dmLedger/`) now ships the roster, the `/dm-ledger` browser, the archive dashboard, and every export/save/delete command. Old settings migrate themselves on first start. If you still have the old plugins installed, uninstall them and keep only this one.
 
+## Screenshots
+
+*(row data below is demo content — usernames/server names are fake, overflow rows blurred)*
+
+| The DM roster browser — every partner, even ones Discord dropped from the list | The guild ledger — every server you've ever been in, current *and gone* |
+|---|---|
+| ![DM roster browser](assets/dm-ledger-browser.png) | ![Guild ledger](assets/guild-ledger.png) |
+
+| Deleted-DM viewer (what other people deleted, kept forever) | Every chat bar gets its own buttons: 🔍 roster · 📁 archive · 🕒 deleted log · 🗑 msgPurge |
+|---|---|
+| ![Deleted DM messages](assets/deleted-dms.png) | ![Chat bar buttons](assets/chatbar-buttons.png) |
+
+The `ledger` badge above your server rail (opens the guild ledger): ![server rail button](assets/rail-button.png)
+
 ## What it does
 
 - 🧠 **Permanent ledger** — every DM you send (and every DM channel Discord's list still shows, or that your imported data package contains) is recorded to a local DataStore roster: user id, channel id, name, last-seen. It survives restarts, re-logins, and Discord dropping channels from its ~100-channel sidebar list. Names are resolved lazily and cached.
