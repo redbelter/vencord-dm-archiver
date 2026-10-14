@@ -50,15 +50,66 @@ export const HIDE_QUEST_STYLE_ID = "vc-dmarchiver-hide-quests";
 // Proven against live DOM (CDP probe): quest tiles in the Active Now column
 // are .questCardContextMenuTrigger__xxxxx / .itemCard__xxxxx (build-suffix
 // varies — match the STABLE prefix, the way theme authors do).
-const HIDE_QUEST_CSS = `
-    [aria-label*="Quest" i],
-    [aria-label*="Quests" i],
+//
+// LANDMINE (real breakage, 2026-10): a bare [aria-label*="Quest" i] is a
+// SUBSTRING match — and "request" contains "quest" ("re"+"quest"). Discord's
+// friend-request error modals carry their header as the dialog's aria-label
+// ("Request Failed"), so the old rule nulled the whole red error popup while
+// its backdrop layer stayed up. Rules must be BOUNDARY-ANCHORED from here on:
+// exact aria-label values only; href keeps its slash ("/quest" cannot occur
+// inside "/requests"); class matches use ^ / leading-space so a hypothetical
+// ".requestCard" can't be caught by ".questCard" either.
+export const HIDE_QUEST_CSS_INNER = `
+    [aria-label="Quests" i],
+    [aria-label="Quest" i],
+    [aria-label="Quest Store" i],
     a[href*="/quest" i],
-    button[aria-label*="Quest" i],
-    [class*="questCard" i] {
+    button[aria-label="Quests" i],
+    button[aria-label="Quest" i],
+    [class^="questCard" i],
+    [class*=" questCard" i] {
         display: none !important;
     }
 `;
+const HIDE_QUEST_CSS = HIDE_QUEST_CSS_INNER;
+
+export const RAIL_STYLE_ID = "vc-dmarchiver-hide-rail";
+
+// Rail upsell buttons (the Nitro orb / Shop). Same lesson as the quest hider:
+// NEVER a bare substring matcher. Everything is anchored one of two ways:
+//   • rail items are namespaced `guildsnav___` — guild ids there are numeric,
+//     so the promo word can only come from Discord's own item names, and the
+//     prefix rules out channel/guild ids entirely;
+//   • label matches are EXACT aria-label values, scoped via :has() to the one
+//     <nav> that contains rail items — so a context-menu row like "Boost with
+//     Nitro" or any chat surface can never be touched.
+// Wrapper-level rules (:has) remove the whole 48px pill, not just the inner
+// button, so no empty gap button stays behind.
+export const HIDE_RAIL_CSS_INNER = `
+    [data-list-item-id^="guildsnav___"][data-list-item-id*="nitro" i],
+    [data-list-item-id^="guildsnav___"][data-list-item-id*="premium" i],
+    [data-list-item-id^="guildsnav___"][data-list-item-id*="shop" i],
+    [data-list-item-id^="guildsnav___"][data-list-item-id*="store" i],
+    nav:has([data-list-item-id^="guildsnav___"]) [data-list-item-id]:has([role="button"][aria-label="Nitro" i]),
+    nav:has([data-list-item-id^="guildsnav___"]) [data-list-item-id]:has([role="button"][aria-label="Shop" i]),
+    nav:has([data-list-item-id^="guildsnav___"]) [data-list-item-id]:has([role="button"][aria-label="Store" i]),
+    nav:has([data-list-item-id^="guildsnav___"]) [data-list-item-id]:has([role="button"][aria-label="Discord Nitro" i]),
+    nav:has([data-list-item-id^="guildsnav___"]) a[href="/shop" i] {
+        display: none !important;
+    }
+`;
+const HIDE_RAIL_CSS = HIDE_RAIL_CSS_INNER;
+
+/** Toggle the rail upsell hider (Nitro/Shop pills on the server rail). */
+export function applyRailPromoHiding(enabled: boolean): void {
+    document.getElementById(RAIL_STYLE_ID)?.remove();
+    if (!enabled) return;
+
+    const style = document.createElement("style");
+    style.id = RAIL_STYLE_ID;
+    style.textContent = HIDE_RAIL_CSS;
+    document.head.appendChild(style);
+}
 
 export function applyQuestHiding(enabled: boolean): void {
     document.getElementById(HIDE_QUEST_STYLE_ID)?.remove();
@@ -204,7 +255,7 @@ export function applyUpsellHiding(enabled: boolean): void {
 // TV-device pairing flow, which the user starts themselves and must see.
 // Intentional flows kept reachable: "Nitro Trial applied" (payment receipt
 // toast), "Unlock with Nitro" (inline lock labels), TV pairing copy.
-export const PROMO_TEXT_RE = /(\b\d+ (?:discord )?orbs\b|orbs claimed|orbs (?:drop|coming your way|flowing)|monthly orbs|ready to redeem|earn \d+ orbs|claim \d+ orbs|bonus orbs|account connected to|claim your gift|claim your new perks|xbox game pass|check out all the new features|nitro reward|% off your next \d+ month)/i;
+export const PROMO_TEXT_RE = /(\b\d+ (?:discord )?orbs\b|orbs claimed|orbs (?:drop|coming your way|flowing)|monthly orbs|ready to redeem|earn \d+ orbs|claim \d+ orbs|bonus orbs|account connected to|claim your gift|claim your new perks|xbox game pass|check out all the new features|nitro reward|% off your next \d+ month|try nitro for \d|for your first \d+ months?)/i;
 const PROMO_CONTAINER_RE = /layer|modal|popout|notice|banner|toast|tooltip|overlay|fixed/i;
 
 let sniperObserver: MutationObserver | null = null;

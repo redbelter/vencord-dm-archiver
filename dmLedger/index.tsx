@@ -33,7 +33,7 @@ import { Logger } from "@utils/Logger";
 import definePlugin, { OptionType } from "@utils/types";
 import { ChannelStore, GuildStore, Menu, RestAPI, SelectedChannelStore, showToast, UserStore } from "@webpack/common";
 
-import { applyActiveNowHiding, applyActivityCardsHiding, applyMemberActivityHiding, applyQuestHiding, applyUpsellHiding, type ArchiverSettings, collectDmNames, collectDmUserChannels, deleteUserMessages, dmRecipientId, exportAllDmMedia, getNonFriendDms, resolveDmChannelId, saveAllDmsAsText, saveDmAsText } from "./archiveCore";
+import { applyActiveNowHiding, applyActivityCardsHiding, applyMemberActivityHiding, applyQuestHiding, applyRailPromoHiding, applyUpsellHiding, type ArchiverSettings, collectDmNames, collectDmUserChannels, deleteUserMessages, dmRecipientId, exportAllDmMedia, getNonFriendDms, resolveDmChannelId, saveAllDmsAsText, saveDmAsText } from "./archiveCore";
 import { closeArchiveDashboard, openArchiveDashboard } from "./ArchiveDashboard";
 import { openLedgerBrowser } from "./Browser";
 import { closeDeletedDms, configureDeletedDms, deletedDmCount, onDmMessageCreate, onDmMessageDelete, onDmMessageUpdate, openDeletedDms, reloadDeletedDms } from "./DeletedDms";
@@ -135,6 +135,12 @@ const settings = definePluginSettings({
         description: "Hide the Activity cards inside profile popouts and full profiles (the big \"Playing X\" sections), plus the activity chip in DM headers. Note: the DM-header chip mixes game + custom status, so both go there.",
         default: false,
         onChange: () => applyActivityCardsHiding(settings.store.hideActivityCards),
+    },
+    hideRailPromos: {
+        type: OptionType.BOOLEAN,
+        description: "Hide the Nitro and Shop/Store buttons on the server rail (leftmost bar), when Discord shows them. Guilds, Home, Explore and your avatar are untouched.",
+        default: false,
+        onChange: () => applyRailPromoHiding(settings.store.hideRailPromos),
     },
     hideUpsellPrompts: {
         type: OptionType.BOOLEAN,
@@ -401,6 +407,7 @@ export default definePlugin({
         applyActiveNowHiding(settings.store.hideActiveNow);
         applyMemberActivityHiding(settings.store.hideMemberActivity);
         applyActivityCardsHiding(settings.store.hideActivityCards);
+        applyRailPromoHiding(settings.store.hideRailPromos);
         configureDeletedDms({ folder: () => settings.store.downloadFolder ?? "", enabled: () => settings.store.captureDeletedDms });
         await reloadDeletedDms();
         log.info(`ready — ledger holds ${ledgerDmCount()} partner(s), ${ledgerNameCount()} name(s); guild ledger ${guildLedgerCount()} server(s); deleted-DM log ${deletedDmCount()} message(s)`);
@@ -417,6 +424,7 @@ export default definePlugin({
         removeServerListElement(ServerListRenderPosition.Above, GuildLedgerRailButton);
         applyQuestHiding(false);
         applyUpsellHiding(false);
+        applyRailPromoHiding(false);
         applyActiveNowHiding(false);
         applyMemberActivityHiding(false);
         applyActivityCardsHiding(false);
