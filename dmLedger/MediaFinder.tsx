@@ -46,7 +46,7 @@ async function startSweep(userId: string, userName: string): Promise<void> {
     // empty id would make every request author-filter nothing and the
     // client-side guard would drop every message — a silent, permanent zero.
     if (!userId) {
-        showToast("Media finder: missing user id", "failure");
+        showToast({ text: "Media finder: missing user id", variant: "critical" });
         session = { userId: "", userName, report: null, progress: null, running: false };
         bump();
         return;
@@ -72,7 +72,7 @@ async function startSweep(userId: string, userName: string): Promise<void> {
     } catch (e) {
         log.error("sweep failed:", e);
         if (session) { session.running = false; session.progress = null; }
-        showToast(`Media sweep failed: ${String((e as any)?.message ?? e)}`, "failure");
+        showToast({ text: `Media sweep failed: ${String((e as any)?.message ?? e)}`, variant: "critical" });
     }
     bump();
 }
@@ -115,7 +115,7 @@ function MediaFinder({ close }: { close: () => void; }) {
                 </div>
                 <button onClick={() => s && startSweep(s.userId, s.userName)} disabled={s?.running} style={btn}>Retry</button>
                 <button
-                    onClick={() => { const t = allUrls(hits); copyToClipboard(t); showToast(`Copied ${t ? t.split("\n").length : 0} link(s)`, "success"); }}
+                    onClick={() => { const t = allUrls(hits); copyToClipboard(t); showToast({ text: `Copied ${t ? t.split("\n").length : 0} link(s)`, variant: "success" }); }}
                     disabled={!hits.length}
                     style={btn}
                 >
@@ -159,7 +159,7 @@ function MediaFinder({ close }: { close: () => void; }) {
                         </div>
                         <div style={{ display: "flex", gap: 4 }}>
                             <button style={btn} onClick={() => jump(h)}>Open</button>
-                            <button style={btn} onClick={() => { copyToClipboard(h.urls.join("\n")); showToast("Copied link(s)", "success"); }}>Copy</button>
+                            <button style={btn} onClick={() => { copyToClipboard(h.urls.join("\n")); showToast({ text: "Copied link(s)", variant: "success" }); }}>Copy</button>
                         </div>
                     </div>
                 ))}

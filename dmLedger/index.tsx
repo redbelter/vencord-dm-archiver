@@ -208,7 +208,8 @@ function engineSettings(): ArchiverSettings {
 }
 
 function toast(message: string, type: "message" | "success" | "failure" = "message") {
-    showToast(message, type);
+    // new Toasts API: one data object; "message" == default look (omit variant)
+    showToast({ text: message, variant: type === "failure" ? "critical" : type === "success" ? "success" : undefined });
 }
 
 function resolveTargetUserId(args: any[]): string | undefined {

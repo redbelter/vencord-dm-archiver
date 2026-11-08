@@ -16,11 +16,11 @@
 
 import { SettingsStore } from "@api/Settings";
 import { Button } from "@components/Button";
+import { Text } from "@components/Text";
 import { copyToClipboard } from "@utils/clipboard";
 import {
     GuildStore,
     showToast,
-    Text,
     TextInput,
     useEffect,
     useState,
@@ -126,7 +126,7 @@ function GuildPanel({ close }: { close: () => void; }) {
     // which row's "who was there" list is expanded (one at a time)
     const [rosterOpen, setRosterOpen] = useState<string | null>(null);
 
-    const toast = (message: string, failure = false) => showToast(message, failure ? "failure" : "success");
+    const toast = (message: string, failure = false) => showToast({ text: message, variant: failure ? "critical" : "success" });
 
     const refresh = () => setRows(guildLedgerList()); // stable oldest-first order
 
@@ -218,7 +218,7 @@ function GuildPanel({ close }: { close: () => void; }) {
 
     return (
         <div style={{ fontSize: 13 }}>
-            <Text variant="text-sm/normal">
+            <Text size="sm">
                 {`${rows.length} server(s) remembered · ${memberCount} current · ${rows.length - memberCount} gone · ${unnamedCount} unnamed`}
             </Text>
 
@@ -245,7 +245,7 @@ function GuildPanel({ close }: { close: () => void; }) {
                             Browse…
                         </Button>
                     </div>
-                    {importMsg && <Text variant="text-xs/normal">{importMsg}</Text>}
+                    {importMsg && <Text size="xs">{importMsg}</Text>}
                 </div>
             )}
 
@@ -293,7 +293,7 @@ function GuildPanel({ close }: { close: () => void; }) {
 
             <div style={{ marginTop: 8 }}>
                 {visible.length === 0 && (
-                    <Text variant="text-xs/normal">
+                    <Text size="xs">
                         {rows.length === 0
                             ? "Nothing remembered yet. Servers you join are recorded automatically; for history, import a guild-ledger.json backfill (recovered from your Discord data package — ask your ledger plugin's author)."
                             : "Nothing matches this filter/search."}
@@ -307,8 +307,8 @@ function GuildPanel({ close }: { close: () => void; }) {
                                 style={{ width: 24, height: 24, borderRadius: "50%", flexShrink: 0, objectFit: "cover" }} />
                             : <div style={{ width: 24, height: 24, borderRadius: "50%", flexShrink: 0, background: "var(--bg-overlay-4, rgba(128,128,128,.2))" }} />}
                         <div style={{ flex: 1, minWidth: 0 }}>
-                            <Text variant="text-sm/medium">{g.name ?? "Unknown server"}</Text>
-                            <div><Text variant="text-xs/normal">{guildLine(g)}</Text></div>
+                            <Text size="sm" weight="medium">{g.name ?? "Unknown server"}</Text>
+                            <div><Text size="xs">{guildLine(g)}</Text></div>
                         </div>
                         {isMemberNow(g) && (
                             <Button size="xs" variant="primary"
@@ -352,7 +352,7 @@ function GuildPanel({ close }: { close: () => void; }) {
                         </div>
                         {rosterOpen === g.guildId && !!g.memberSnapshot?.length && (
                             <div style={{ marginTop: "2px", padding: "6px 8px", background: "var(--bg-overlay-1, rgba(128,128,128,.05))", borderRadius: "6px", maxHeight: "180px", overflowY: "auto" }}>
-                                <Text variant="text-xs/normal">
+                                <Text size="xs">
                                     {g.memberSnapshot.length > ROSTER_VIEW_CAP
                                         ? `Showing first ${ROSTER_VIEW_CAP} of ${g.memberSnapshot.length} saved — Roster Copy exports all`
                                         : `Who was there (${g.memberSnapshot.length} saved)`}

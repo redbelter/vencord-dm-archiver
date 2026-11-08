@@ -8,7 +8,8 @@
 // and pause / resume / stop for long-running deletions.
 
 import { Button } from "@components/Button";
-import { ChannelRouter, Checkbox, Text, TextInput, useEffect, useState } from "@webpack/common";
+import { Text } from "@components/Text";
+import { ChannelRouter, Checkbox, TextInput, useEffect, useState } from "@webpack/common";
 import type { CSSProperties } from "react";
 
 import { type DmRow, getDmSummary, listDms, type PurgeConfig, type PurgeEngine, type PurgeEstimate, type PurgeScope } from "./engine";
@@ -150,7 +151,7 @@ function PurgeControl({ engine, onClose, initialScope, currentChannelId }: {
             {/* ── saved queue banner ─────────────────────────────────── */}
             {showSavedQueue ? (
                 <div style={panelStyle}>
-                    <Text variant="text-sm/normal">
+                    <Text size="sm">
                         Unfinished purge: {pendingNow} message(s) still queued. Resume or discard.
                     </Text>
                     <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
@@ -166,7 +167,7 @@ function PurgeControl({ engine, onClose, initialScope, currentChannelId }: {
 
             {/* ── live status strip ──────────────────────────────────── */}
             <div style={panelStyle}>
-                <Text variant="text-sm/bold">
+                <Text size="sm" weight="bold">
                     {running
                         ? (st.paused ? "PAUSED" : "RUNNING")
                         : (pendingNow > 0 ? "STOPPED — queue saved" : "IDLE")}
@@ -174,30 +175,30 @@ function PurgeControl({ engine, onClose, initialScope, currentChannelId }: {
                     {st.scope === "media" ? "media only" : "all messages"}
                 </Text>
                 <div>
-                    <Text variant="text-sm/normal">
+                    <Text size="sm">
                         deleted {st.deleted} · failed {st.failed} · scanned {st.scanned}
                         {running ? ` · ${st.ratePerMin}/min · queued ${pendingNow}` : ""}
                         {running && st.targetsTotal ? ` · target ${Math.min(st.targetsDone + 1, st.targetsTotal)}/${st.targetsTotal}` : ""}
                     </Text>
                 </div>
                 {running && st.currentTarget ? (
-                    <Text variant="text-sm/normal">target: {st.currentTarget} · elapsed {fmtElapsed(Date.now() - st.startedAt)}</Text>
+                    <Text size="sm">target: {st.currentTarget} · elapsed {fmtElapsed(Date.now() - st.startedAt)}</Text>
                 ) : null}
                 {st.lastMessage ? (
-                    <Text variant="text-xs/normal">{st.lastMessage}</Text>
+                    <Text size="xs">{st.lastMessage}</Text>
                 ) : null}
             </div>
 
             {/* ── configuration (locked while running) ───────────────── */}
             <div style={{ opacity: running ? 0.5 : 1 }}>
-                <Text variant="text-xs/bold">DELETE WHAT?</Text>
+                <Text size="xs" weight="bold">DELETE WHAT?</Text>
                 <div>
                     <Checkbox
                         value={scope === "all"}
                         disabled={running}
                         onChange={(_, v: boolean) => !running && v && setScope("all")}
                     >
-                        <Text variant="text-sm/normal">All messages I sent</Text>
+                        <Text size="sm">All messages I sent</Text>
                     </Checkbox>
                 </div>
                 <div>
@@ -206,12 +207,12 @@ function PurgeControl({ engine, onClose, initialScope, currentChannelId }: {
                         disabled={running}
                         onChange={(_, v: boolean) => !running && v && setScope("media")}
                     >
-                        <Text variant="text-sm/normal">Only messages with media (attachments/images)</Text>
+                        <Text size="sm">Only messages with media (attachments/images)</Text>
                     </Checkbox>
                 </div>
 
                 <div style={{ marginTop: 12 }}>
-                    <Text variant="text-xs/bold">WHERE?</Text>
+                    <Text size="xs" weight="bold">WHERE?</Text>
                 </div>
                 <div>
                     <Checkbox
@@ -219,7 +220,7 @@ function PurgeControl({ engine, onClose, initialScope, currentChannelId }: {
                         disabled={running || !canTargetCurrentChannel}
                         onChange={(_, v: boolean) => !running && setTargetCurrent(v)}
                     >
-                        <Text variant="text-sm/normal">Only this conversation{canTargetCurrentChannel ? "" : " (open one first)"}</Text>
+                        <Text size="sm">Only this conversation{canTargetCurrentChannel ? "" : " (open one first)"}</Text>
                     </Checkbox>
                 </div>
                 <div>
@@ -228,7 +229,7 @@ function PurgeControl({ engine, onClose, initialScope, currentChannelId }: {
                         disabled={running}
                         onChange={(_, v: boolean) => !running && setTargetDms(v)}
                     >
-                        <Text variant="text-sm/normal">
+                        <Text size="sm">
                             All my DMs — only my own messages
                             {dmCount !== undefined ? ` (${dmCount} conversation${dmCount === 1 ? "" : "s"})` : " (every private chat)"}
                         </Text>
@@ -240,7 +241,7 @@ function PurgeControl({ engine, onClose, initialScope, currentChannelId }: {
                         disabled={running || !targetDms}
                         onChange={(_, v: boolean) => !running && setFriendsOnly(v)}
                     >
-                                                <Text variant="text-sm/normal">Skip DMs with friends (only sweep strangers)</Text>
+                                                <Text size="sm">Skip DMs with friends (only sweep strangers)</Text>
                     </Checkbox>
                 </div>
 
@@ -259,9 +260,9 @@ function PurgeControl({ engine, onClose, initialScope, currentChannelId }: {
                 {showPicker && !targetDms ? (
                     <div style={{ ...panelStyle, maxHeight: 240, overflowY: "auto" as const }}>
                         {dmList === null ? (
-                            <Text variant="text-sm/normal">loading DM list…</Text>
+                            <Text size="sm">loading DM list…</Text>
                         ) : dmList.length === 0 ? (
-                            <Text variant="text-sm/normal">No DM channels found.</Text>
+                            <Text size="sm">No DM channels found.</Text>
                         ) : (
                             <>
                                 <TextInput
@@ -290,9 +291,9 @@ function PurgeControl({ engine, onClose, initialScope, currentChannelId }: {
                                                 value={selected.has(r.channelId)}
                                                 onChange={() => toggleDm(r.channelId)}
                                             >
-                                                <Text variant="text-sm/normal">
+                                                <Text size="sm">
                                                     {r.username}
-                                                    <Text variant="text-xs/normal" style={{ color: "var(--text-muted, inherit)" }}>
+                                                    <Text size="xs" style={{ color: "var(--text-muted, inherit)" }}>
                                                         {r.isFriend ? " · friend" : " · not friends"}
                                                     </Text>
                                                 </Text>
@@ -322,27 +323,27 @@ function PurgeControl({ engine, onClose, initialScope, currentChannelId }: {
             {estimating || estimate ? (
                 <div style={panelStyle}>
                     {estimating ? (
-                        <Text variant="text-sm/normal">{estimateProgress || "counting…"}</Text>
+                        <Text size="sm">{estimateProgress || "counting…"}</Text>
                     ) : estimate ? (
                         <>
-                            <Text variant="text-sm/bold">
+                            <Text size="sm" weight="bold">
                                 ≈ {estimate.count.toLocaleString()} message{estimate.count === 1 ? "" : "s"} to delete
                                 {estimate.cancelled ? " (count cancelled early — partial)" : ""}
                             </Text>
                             <div>
-                                <Text variant="text-sm/normal">
+                                <Text size="sm">
                                     in {estimate.channels} conversation{estimate.channels === 1 ? "" : "s"}
                                     {estimate.skipped ? ` · ${estimate.skipped} friend DM${estimate.skipped === 1 ? "" : "s"} skipped` : ""}
                                 </Text>
                             </div>
                             {estimate.etaMs !== null ? (
                                 <div>
-                                    <Text variant="text-sm/normal">
+                                    <Text size="sm">
                                         at {estimate.ratePerMinute}/min → about {fmtDuration(estimate.etaMs)}
                                     </Text>
                                 </div>
                             ) : (
-                                <div><Text variant="text-sm/normal">Nothing to delete — you sent no {scope === "media" ? "media" : "messages"} in the selected scope.</Text></div>
+                                <div><Text size="sm">Nothing to delete — you sent no {scope === "media" ? "media" : "messages"} in the selected scope.</Text></div>
                             )}
                         </>
                     ) : null}
@@ -391,7 +392,7 @@ function PurgeControl({ engine, onClose, initialScope, currentChannelId }: {
                 </Button>
             </div>
 
-            <Text variant="text-xs/normal">
+            <Text size="xs">
                 Rate limit lives in plugin settings (default 15/min). Progress auto-saves — safe to close
                 Discord mid-run; the queue resumes next launch. Only messages you sent are ever deleted.
             </Text>

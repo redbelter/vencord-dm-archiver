@@ -267,7 +267,7 @@ export default definePlugin({
                 if (cfg.hours > 0) bits.push(`elapsed +${cfg.hours}h`);
                 if (act.buttons) bits.push(`buttons: ${act.buttons.length}`);
                 const hiddenNote = settings.store.neverShow ? " [HIDDEN: neverShow is on in GamePresence settings]" : "";
-                if (!settings.store.neverShow) showToast(`Now showing: ${cfg.name}`);
+                if (!settings.store.neverShow) showToast({ text: `Now showing: ${cfg.name}` });
                 return { content: `🎮 ${bits.join(" · ")}${hiddenNote}` };
             },
         },

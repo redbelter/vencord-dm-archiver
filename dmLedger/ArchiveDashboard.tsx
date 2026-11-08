@@ -8,9 +8,10 @@
 // media/text export, and (opt-in) own-message deletion — all in one modal.
 
 import { Button } from "@components/Button";
+import { Text } from "@components/Text";
 import { Logger } from "@utils/Logger";
 import { PluginNative } from "@utils/types";
-import { ChannelRouter, Checkbox, ConfirmModal, openModal, showToast, Text, TextInput, useEffect, UserStore,useState } from "@webpack/common";
+import { ChannelRouter, Checkbox, ConfirmModal, openModal, showToast, TextInput, useEffect, UserStore,useState } from "@webpack/common";
 
 import {
     type ArchiverSettings,
@@ -179,7 +180,7 @@ function Dashboard({ onClose, initialSettings, showDeleteOption, initialChannelI
         try {
             ChannelRouter?.transitionToChannel?.(row.channelId);
         } catch {
-            showToast("Could not open that DM.", "failure");
+            showToast({ text: "Could not open that DM.", variant: "critical" });
         }
     };
 
@@ -206,7 +207,7 @@ function Dashboard({ onClose, initialSettings, showDeleteOption, initialChannelI
     };
 
     const sectionLabel = (text: string) => (
-        <Text variant="text-xs/bold" style={{ textTransform: "uppercase", opacity: 0.6 }}>{text}</Text>
+        <Text size="xs" weight="bold" style={{ textTransform: "uppercase", opacity: 0.6 }}>{text}</Text>
     );
 
     return (
@@ -246,14 +247,14 @@ function Dashboard({ onClose, initialSettings, showDeleteOption, initialChannelI
                     onChange={(_, v: boolean) => setCfg(c => ({ ...c, exportExternalMedia: v }))}
                     size={20}
                 >
-                    <Text variant="text-sm/normal">Include external links (imgur, …)</Text>
+                    <Text size="sm">Include external links (imgur, …)</Text>
                 </Checkbox>
                 <Checkbox
                     value={cfg.includeLinkImages}
                     onChange={(_, v: boolean) => setCfg(c => ({ ...c, includeLinkImages: v }))}
                     size={20}
                 >
-                    <Text variant="text-sm/normal">Harvest image URLs from message text</Text>
+                    <Text size="sm">Harvest image URLs from message text</Text>
                 </Checkbox>
             </div>
 
@@ -271,7 +272,7 @@ function Dashboard({ onClose, initialSettings, showDeleteOption, initialChannelI
                     onChange={(_, v: boolean) => setNonFriendsOnly(v)}
                     size={20}
                 >
-                    <Text variant="text-sm/normal">Non-friends</Text>
+                    <Text size="sm">Non-friends</Text>
                 </Checkbox>
                 <Button variant="secondary" size="xs" disabled={busy} onClick={() => setSelected(new Set(visible.map(r => r.userId)))}>
                     Select all shown
@@ -301,7 +302,7 @@ function Dashboard({ onClose, initialSettings, showDeleteOption, initialChannelI
                 )}
                 {collapsed && (
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 8px", opacity: 0.8 }}>
-                        <Text variant="text-xs/normal">
+                        <Text size="xs">
                             Showing {visible.length} selected {hiddenCount > 0 ? `· ${hiddenCount} hidden` : ""}
                         </Text>
                         <Button variant="secondary" size="xs" disabled={busy} onClick={() => setCollapsed(false)}>
@@ -313,7 +314,7 @@ function Dashboard({ onClose, initialSettings, showDeleteOption, initialChannelI
                     <div key={row.userId} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 8px" }}>
                         <Checkbox value={selected.has(row.userId)} onChange={() => toggle(row.userId)} size={18} disabled={busy} />
                         <span style={{ flex: 1 }}>{row.username}</span>
-                        {!row.isFriend && <Text variant="text-xs/normal" style={{ opacity: 0.6 }}>not friends</Text>}
+                        {!row.isFriend && <Text size="xs" style={{ opacity: 0.6 }}>not friends</Text>}
                         <span style={{ opacity: 0.4, fontSize: 11 }}>{row.userId}</span>
                         <Button
                             variant="secondary"

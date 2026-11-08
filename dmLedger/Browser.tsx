@@ -16,6 +16,7 @@
 import { commands as commandRegistry } from "@api/Commands";
 import { SettingsStore } from "@api/Settings";
 import { Button } from "@components/Button";
+import { Text } from "@components/Text";
 import { copyToClipboard } from "@utils/clipboard";
 import {
     ChannelRouter,
@@ -24,7 +25,6 @@ import {
     RestAPI,
     SelectedChannelStore,
     showToast,
-    Text,
     TextInput,
     useEffect,
     UserStore,
@@ -313,7 +313,7 @@ function LedgerBrowser({ close }: { close: () => void; }) {
         setSel(next);
     };
 
-    const toast = (message: string, failure = false) => showToast(message, failure ? "failure" : "success");
+    const toast = (message: string, failure = false) => showToast({ text: message, variant: failure ? "critical" : "success" });
 
     const doOpen = async (row: LedgerDm) => {
         try {
@@ -626,7 +626,7 @@ function LedgerBrowser({ close }: { close: () => void; }) {
 
     return (
         <div style={{ fontSize: 13 }}>
-            <Text variant="text-sm/normal">
+            <Text size="sm">
                 {`${ledgerDmCount()} partner(s) remembered · ${hiddenCount} hidden · ${unnamedCount} unnamed · ${ledgerNameCount()} names`}
             </Text>
 
@@ -660,7 +660,7 @@ function LedgerBrowser({ close }: { close: () => void; }) {
                         </Button>
                     </div>
                     {pkgMsg && (
-                        <Text variant="text-xs/normal">{pkgMsg}</Text>
+                        <Text size="xs">{pkgMsg}</Text>
                     )}
                 </div>
             )}
@@ -705,7 +705,7 @@ function LedgerBrowser({ close }: { close: () => void; }) {
 
             {busy && (
                 <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: "8px" }}>
-                    <Text variant="text-sm/normal">{`${busy.kind === "resolve" ? "resolving" : busy.kind === "sweep" ? "sweeping" : "restoring"} ${busy.done}/${busy.total}…`}</Text>
+                    <Text size="sm">{`${busy.kind === "resolve" ? "resolving" : busy.kind === "sweep" ? "sweeping" : "restoring"} ${busy.done}/${busy.total}…`}</Text>
                     <Button size="xs" variant="dangerPrimary" title="Halt the current batch (already-completed items stay done)" onClick={() => (stopFlag.stop = true)}>
                         Stop
                     </Button>
@@ -721,7 +721,7 @@ function LedgerBrowser({ close }: { close: () => void; }) {
                         Clear
                     </Button>
                     {sel.size > 0 && [
-                            <Text key="c" variant="text-xs/normal">{`${sel.size} selected`}</Text>,
+                            <Text key="c" size="xs">{`${sel.size} selected`}</Text>,
                             <Button key="r" size="xs" variant="primary" disabled={Boolean(busy)} title="Ask Discord to reopen ALL selected DMs (paced ~1/sec so you don't get rate-limited; Stop works mid-run)" onClick={() => void restoreSelected()}>
                                 Restore {sel.size}
                             </Button>,
@@ -768,14 +768,14 @@ function LedgerBrowser({ close }: { close: () => void; }) {
 
             {personQuery.trim().length >= 2 && (
                 <div style={{ marginTop: 4 }}>
-                    {rosterText && <Text variant="text-xs/normal">{rosterText}</Text>}
+                    {rosterText && <Text size="xs">{rosterText}</Text>}
                     {localMatches.length > 0 && (
                         <>
-                            <Text variant="text-xs/normal">{"From local cache (instant, no API):"}</Text>
+                            <Text size="xs">{"From local cache (instant, no API):"}</Text>
                             {localMatches.slice(0, 10).map(p => (
                                 <div key={p.userId} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "2px 0" }}>
                                     <span style={{ flex: 1 }}>{p.username}</span>
-                                    <Text variant="text-xs/normal">{`id ${p.userId}`}</Text>
+                                    <Text size="xs">{`id ${p.userId}`}</Text>
                                     <Button size="xs" variant="secondary" disabled={Boolean(openId)} title="Opens the original conversation if a DM ever existed, else a fresh DM. The ledger remembers them afterwards." onClick={() => void openPersonById(p.userId)}>
                                         {openId === p.userId ? "opening…" : "Open DM"}
                                     </Button>
@@ -785,11 +785,11 @@ function LedgerBrowser({ close }: { close: () => void; }) {
                     )}
                     {rosterMatches.length > 0 && (
                         <>
-                            <Text variant="text-xs/normal">{"From server rosters:"}</Text>
+                            <Text size="xs">{"From server rosters:"}</Text>
                             {rosterMatches.slice(0, 25).map(p => (
                                 <div key={p.userId} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "2px 0" }}>
                                     <span style={{ flex: 1 }}>{p.username}</span>
-                                    <Text variant="text-xs/normal">{`in ${p.inGuild}`}</Text>
+                                    <Text size="xs">{`in ${p.inGuild}`}</Text>
                                     <Button size="xs" variant="secondary" disabled={Boolean(openId)} title="Opens the original conversation if a DM ever existed, else a fresh DM. The ledger remembers them afterwards." onClick={() => void openPersonById(p.userId)}>
                                         {openId === p.userId ? "opening…" : "Open DM"}
                                     </Button>
@@ -839,14 +839,14 @@ function LedgerBrowser({ close }: { close: () => void; }) {
                     </div>
                 ))}
                 {!visible.length && (
-                    <Text variant="text-sm/normal">
+                    <Text size="sm">
                         {rows.length ? "No rows match the current search/filter." : "The ledger is empty so far — DM someone, hit 'Sweep live', import your Discord data package above, or just use MsgPurge / the archive dashboard and records will accumulate here automatically."}
                     </Text>
                 )}
             </div>
 
             <div style={{ marginTop: 10 }}>
-                <Text variant="text-xs/normal">
+                <Text size="xs">
                     {"Stored on THIS device only (Vencord IndexedDB). Restoring uses Discord's create-or-get — it returns your original channel. Forget/Delete here only forgets the ledger row, never Discord data."}
                 </Text>
             </div>
