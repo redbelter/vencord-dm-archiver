@@ -216,7 +216,7 @@ const HIDE_UPSELLS_CSS = `
     #nitro-mini-card,
     [aria-label*="Gift Nitro" i],
     [aria-label*="Send a Gift" i],
-    button[aria-label*="gift" i],
+    [aria-label="Give a Gift" i],
     [aria-label*="Connected Account" i],
     [aria-label*="Connect Account" i],
     [aria-label*="Add a Connection" i] {
